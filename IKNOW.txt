@@ -1,0 +1,33 @@
+
+Sorry, I know the setup is not simple.
+
+Thier are many variables in setting up this system so I am having difficulty giving you a good set of instructions.
+
+Like:
+	- Do you use an existing raid or NAS device to store the files or attach a SSD or SAS drive to the RPI 4.
+	- What is the mount point, /ssd, /sas or something else.
+	- Do you use sharewave-uploads or just uploads for the file storage.
+	- The sharewave-gui has a password and the sharewave-server has a password, they can use the same
+	  password for both if you want. 
+
+I normally setup up the drive first, if using a new SSD or SAS drive.
+
+I normally execute the ./build.sh and then the sudo ./install.sh
+
+The gui requires ask for a new password to manage the gui the very firat time you execute it.
+
+If this is your first time running the sharewave.server then you need to execute it by hand so that you can
+supply the password when asked.
+
+The sharewave-gui program will ask you to create a password for the sharewave-gui program.
+
+When you click on to the connect button in the gui it will ask you for the password you gave to the server.
+
+The mount point will need is permissions set, do this before you execute the server for the first time.
+    shdo chmod 0777 /your_mount_point
+
+The server will create the additional dirtectories that are needed.
+
+I can help you if you email me questions at rkwiles@twc.com
+
+Give me information as to the setup you are trying to configure.
