@@ -9,6 +9,10 @@ A self-hosted file sharing server consisting of two separate components:
 
 Web users access ShareWave through any browser at the server's HTTPS address.
 
+> **Just want to get it running?** See [INSTALL.md](INSTALL.md) for a
+> straight-through install guide. This README covers everything else —
+> configuration, architecture, troubleshooting, and reference details.
+
 ---
 
 ## Architecture
@@ -633,6 +637,8 @@ After running `sudo ./install.sh`:
 
 ```
 sharewave/
+├── README.md                        Full documentation
+├── INSTALL.md                       Step-by-step install guide
 ├── pom.xml                          Parent POM (multi-module)
 ├── VERSION                          Single source of truth for the version string
 ├── .gitignore
