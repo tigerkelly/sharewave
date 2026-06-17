@@ -1,0 +1,61 @@
+
+The ShareWave system requires a external disk, one could use an SSD drive attached to the USB 3.0 port or an SAS drive attached to the USB 3.0 both need an SSD or SAS to USB 3.0 adapter.  The SSD to USB 3.0 adapter is cheaper but the SAS to USB 3.0 allows for a larger drive at a cheaper cost per GB.
+
+** NOTE ** Do not use the SD card to store your files, cause it will shorten the life of your SD card plus they are normally alot slower.
+
+	- Attach the drive either SSD or SAS to the RPI 4.
+	- Boot the RPI 4.
+	- Execute command sudo lsblk to find the device path. If only one SSD or SAS attached to the RPI4
+	  then you should see /dev/sda device path.
+	- Execute command sudo fdisk /dev/sda
+	- Use the letter p to show all existing partitions.
+	- If any partitions exist then use the d command to delete them all.
+	- Once all are deleted then use the n command to create a new partition.
+	  You will be asked the following questions.
+		Command (m for help): p
+		Disk /dev/sda: 465.76 GiB, 500107862016 bytes, 976773168 sectors
+		Disk model: ST9500431SS
+		Units: sectors of 1 * 512 = 512 bytes
+		Sector size (logical/physical): 512 bytes / 4096 bytes
+		I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+		Disklabel type: dos
+		Disk identifier: 0x855605a4
+		
+		Command (m for help): n
+		Partition type
+   		p   primary (0 primary, 0 extended, 4 free)
+   		e   extended (container for logical partitions)
+		Select (default p): p
+		Partition number (1-4, default 1):
+		First sector (2048-976773167, default 2048):
+		Last sector, +/-sectors or +/-size{K,M,G,T,P} (2048-976773167, default 976773167):
+		
+		Created a new partition 1 of type 'Linux' and of size 465.8 GiB.
+		Partition #1 contains a ext4 signature.
+		
+		Do you want to remove the signature? [Y]es/[N]o: Y
+		
+		The signature will be removed by a write command.
+		
+		Command (m for help): w
+
+	- Execute command sudo mkfs.ext4 /dev/sda1
+	  This may take awhile, depends on drive size and speed.
+	- I noramally create a mount point directory at root level but you could use a mont pint of your choice.
+	      sudo mkdir /ssd or sudo mkdir /sas
+	- Execute the command sudo blkid to get the UUID of the drive.
+	- Edit the /etc/fstab file.
+	      sudo vi /etc/fstab
+	- Add the follwing line to the fstab file.
+		UUID="PLACE_YOUR_UUID_HERE" /MOUNT_POINT_HERE	ext4	defaults,auto,users,rw,nofail	0 	0
+	- Change the permissions of the mount point.
+	      sudo chmod 0777 /YOUR_MOUNT_POINT
+	- Once fstab has been written then execute the command
+	      sudo mount -a
+	  This should mount your drive at the mount point you selected.
+	  You should see it listed in a df -h command.
+	- Next run the follwoing command to setup the needed directories
+	      java -jar /opt/sharewave.sharewave-server.jar
+	  This will create the needed directories and ask you for the server password.
+	  Use Ctrl-C to exist the server so that is can be started by the systemd at bootup.
+	- Once youi reboot the RPI 4 it should mount the drive and execute the sharewave-server at startup.

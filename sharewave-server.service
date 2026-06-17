@@ -1,0 +1,33 @@
+[Unit]
+Description=ShareWave File Sharing Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+
+# Path to the server JAR — installed by install.sh to /opt/sharewave/
+ExecStart=/usr/bin/java -jar /opt/sharewave/sharewave-server.jar
+
+# Restart automatically if the server crashes
+Restart=on-failure
+RestartSec=5s
+
+# Give the JVM enough time to shut down gracefully
+TimeoutStopSec=15s
+
+# Working directory (logs, uploads relative to ~ are fine; this is optional)
+WorkingDirectory=/home/pi
+
+# Environment
+Environment="JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8"
+
+# Logging — journal captures stdout/stderr
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sharewave
+
+[Install]
+WantedBy=multi-user.target
