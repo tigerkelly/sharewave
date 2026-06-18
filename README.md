@@ -156,28 +156,29 @@ journalctl -u sharewave-server -f   # live log tail
 
 ## Versioning
 
-The version shown in the web UI header ("v1.0 by Kelly Wiles") and the
-admin GUI's title bar comes from the `VERSION` file at the project root.
+There is exactly **one** `VERSION` file, at the project root — both
+`sharewave-server` and `sharewave-gui` read it directly at runtime
+(nothing is copied or bundled into either JAR). It's what's shown in the
+web UI header ("v1.0 by Kelly Wiles") and the admin GUI's title bar.
 
 **To change the version:**
 
-1. Edit `VERSION` (a single line, e.g. `1.1`)
-2. `./build.sh` — copies `VERSION` into each module's resources so it's
-   bundled into the JAR
-3. `sudo ./install.sh` — also copies `VERSION` to `/opt/sharewave/VERSION`
+1. Edit `VERSION` at the project root (a single line, e.g. `1.1`)
+2. `sudo ./install.sh` — copies the updated `VERSION` to
+   `/opt/sharewave/VERSION` alongside the JARs
 
-**On an already-installed system**, you can change the version without
-rebuilding by editing `/opt/sharewave/VERSION` directly and restarting the
-server — `AppVersion` checks for a `VERSION` file next to the running JAR
-first, before falling back to the one bundled in the JAR.
+No rebuild is required — `AppVersion` reads `VERSION` fresh from disk
+each time the JAR starts, so installing picks up the new version on the
+next server/GUI restart.
 
-If no `VERSION` file is found anywhere, the version displays as `dev`.
+**Running from source without installing:** `AppVersion` also checks two
+directories above the running JAR (e.g.
+`sharewave-server/target/sharewave-server.jar` → `../../VERSION`), so
+`java -jar sharewave-server/target/sharewave-server.jar` run straight
+from a source checkout finds the project root's `VERSION` automatically.
 
-**Per-site override:** the admin GUI's Server tab also has a "Site
-Version" field, stored in the server's config (`~/.sharewave.conf`). If
-set, it overrides the `VERSION` file for that server's web UI only —
-useful for distinguishing multiple deployments without changing the
-underlying build/install version.
+If no `VERSION` file is found in either location, the version displays
+as `dev`.
 
 ---
 
@@ -660,7 +661,7 @@ sharewave/
 │       ├── HtmlPage.java            Inline web UI (HTML/CSS/JS)
 │       ├── SessionManager.java      In-memory session tokens
 │       ├── CertUtil.java            TLS keystore generation
-│       ├── AppVersion.java          Reads VERSION file (build/install/bundled)
+│       ├── AppVersion.java          Reads the project-root/installed VERSION file
 │       └── FileLogger.java          Rotating file logger (1 MB / 2 backups)
 │
 └── sharewave-gui/
@@ -670,7 +671,7 @@ sharewave/
         ├── ManagementClient.java    TCP client + live log streaming
         ├── GuiConfig.java           GUI settings (~/.sharewave-gui.conf)
         ├── AdminConfig.java         Admin password (bcrypt, GUI copy)
-        └── AppVersion.java          Reads VERSION file (build/install/bundled)
+        └── AppVersion.java          Reads the project-root/installed VERSION file
 ```
 
 ---

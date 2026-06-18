@@ -56,6 +56,7 @@ public class GuiApp extends Application {
     private Label       statusLabel;
     private javafx.scene.shape.Circle statusDot;
     private Label       serverUrlLabel;
+    private Label       statusSep;
 
     // Tab content roots
     private VBox  serverCard, filesCard, usersCard, archiveCard, logCard;
@@ -120,7 +121,8 @@ public class GuiApp extends Application {
         btn.setOnAction(e -> doSet.run());
         pw2.setOnAction(e -> doSet.run());
         box.getChildren().addAll(title, sub, pw1, pw2, err, btn);
-        dlg.setScene(new Scene(box, 360, 260)); dlg.showAndWait();
+        box.setPrefWidth(360);
+        dlg.setScene(new Scene(box)); dlg.sizeToScene(); dlg.showAndWait();
         return result[0];
     }
 
@@ -143,7 +145,8 @@ public class GuiApp extends Application {
         btn.setOnAction(e -> doLogin.run());
         pw.setOnAction(e -> doLogin.run());
         box.getChildren().addAll(title, sub, pw, err, btn);
-        dlg.setScene(new Scene(box, 340, 220)); dlg.showAndWait();
+        box.setPrefWidth(340);
+        dlg.setScene(new Scene(box)); dlg.sizeToScene(); dlg.showAndWait();
         return result[0];
     }
 
@@ -190,8 +193,8 @@ public class GuiApp extends Application {
         statusDot   = new javafx.scene.shape.Circle(6, Color.web(DANGER));
         statusLabel = new Label("DISCONNECTED");
         statusLabel.setStyle("-fx-text-fill:" + DANGER + ";-fx-font-weight:bold;-fx-font-size:13px;");
-        Label sep = new Label("·");
-        sep.setStyle("-fx-text-fill:#2e3148;-fx-font-size:16px;");
+        statusSep = new Label("·");
+        statusSep.setStyle("-fx-text-fill:" + theme.border() + ";-fx-font-size:16px;");
         serverUrlLabel = new Label("");
         serverUrlLabel.setStyle("-fx-text-fill:" + ACCENT + ";-fx-font-size:11px;");
         Region sp = new Region(); HBox.setHgrow(sp, Priority.ALWAYS);
@@ -210,7 +213,7 @@ public class GuiApp extends Application {
         changePwBtn.setOnMouseEntered(e -> changePwBtn.setStyle(changePwBase.replace("#ffd9a0","#ffe6c0")));
         changePwBtn.setOnMouseExited(e  -> changePwBtn.setStyle(changePwBase));
 
-        bar.getChildren().addAll(statusDot, statusLabel, sep, serverUrlLabel, sp, changePwBtn, themeBtn);
+        bar.getChildren().addAll(statusDot, statusLabel, statusSep, serverUrlLabel, sp, changePwBtn, themeBtn);
         return bar;
     }
 
@@ -338,7 +341,7 @@ public class GuiApp extends Application {
         VBox.setVgrow(card, Priority.ALWAYS);
 
         HBox toolbar = new HBox(8); toolbar.setAlignment(Pos.CENTER_LEFT);
-        Label lbl = new Label(""); lbl.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;");
+        Label lbl = new Label(""); lbl.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
         lbl.setId("filesCountLabel");
         Region sp = new Region(); HBox.setHgrow(sp, Priority.ALWAYS);
         Button refresh = greenRefreshBtn("Refresh");
@@ -360,7 +363,7 @@ public class GuiApp extends Application {
         scroll.setStyle(scroll.getStyle() + "-fx-border-radius:0 0 5 5;");
 
         Label ph = new Label("Connect to server, then click Refresh.");
-        ph.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;-fx-padding:12 8;");
+        ph.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-padding:12 8;");
         filesListBox.getChildren().add(ph);
 
         card.getChildren().addAll(toolbar, headers, scroll);
@@ -398,7 +401,7 @@ public class GuiApp extends Application {
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
         Label ph = new Label("Connect to server to manage users.");
-        ph.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;-fx-padding:8 4;");
+        ph.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-padding:8 4;");
         usersListBox.getChildren().add(ph);
 
         card.getChildren().addAll(toolbar, createRow, createMsg, scroll);
@@ -414,12 +417,12 @@ public class GuiApp extends Application {
         Button refresh = greenRefreshBtn("Refresh"); refresh.setOnAction(e -> refreshArchive());
         toolbar.getChildren().add(refresh);
         Label info = new Label("Files moved here after expiry. Only admins can delete them.");
-        info.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;"); info.setWrapText(true);
+        info.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;"); info.setWrapText(true);
         archiveListBox = new VBox(0); archiveListBox.setFillWidth(true);
         ScrollPane scroll = makeScroll(archiveListBox, 150);
         VBox.setVgrow(scroll, Priority.ALWAYS);
         Label ph = new Label("No archived files.");
-        ph.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;-fx-padding:8 4;");
+        ph.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-padding:8 4;");
         archiveListBox.getChildren().add(ph);
         card.getChildren().addAll(toolbar, info, scroll);
         return card;
@@ -528,7 +531,8 @@ public class GuiApp extends Application {
             btn.setOnAction(e -> { result[0] = pw.getText(); dlg.close(); latch.countDown(); });
             pw.setOnAction(e -> btn.fire());
             box.getChildren().addAll(dialogTitle("Authenticate"), pw, err, btn);
-            dlg.setScene(new Scene(box, 320, 180));
+            box.setPrefWidth(320);
+            dlg.setScene(new Scene(box)); dlg.sizeToScene();
             dlg.setOnCloseRequest(e -> latch.countDown());
             dlg.showAndWait();
         });
@@ -843,7 +847,8 @@ public class GuiApp extends Application {
         pw2.setOnAction(e -> save.fire());
         btnRow.getChildren().addAll(cancel, save);
         box.getChildren().addAll(dialogTitle("Reset: " + username), pw1, pw2, err, btnRow);
-        dlg.setScene(new Scene(box, 320, 230)); dlg.showAndWait();
+        box.setPrefWidth(320);
+        dlg.setScene(new Scene(box)); dlg.sizeToScene(); dlg.showAndWait();
     }
 
     private void deleteFile(int fileId, String filename) {
@@ -885,7 +890,7 @@ public class GuiApp extends Application {
 
         VBox box = new VBox(12);
         box.setPadding(new Insets(20));
-        box.setStyle("-fx-background-color:#1a1d27;");
+        box.setStyle("-fx-background-color:" + theme.panel() + ";");
         box.setPrefWidth(400);
 
         Label title = dialogTitle(filename);
@@ -893,7 +898,7 @@ public class GuiApp extends Application {
 
         // ── Access mode ─────────────────────────────────────────────────────
         Label modeLabel = new Label("Who can download?");
-        modeLabel.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;-fx-text-transform:uppercase;");
+        modeLabel.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-text-transform:uppercase;");
 
         ToggleGroup modeGroup = new ToggleGroup();
         RadioButton rbPublic   = styledRadio("Public — any logged-in user", modeGroup);
@@ -909,7 +914,7 @@ public class GuiApp extends Application {
 
         // Current access chips
         Label chipsLabel = new Label("Currently allowed:");
-        chipsLabel.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;");
+        chipsLabel.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
 
         FlowPane chips = new FlowPane(6, 6);
         List<String> draft = new ArrayList<>(currentUsers);
@@ -918,21 +923,21 @@ public class GuiApp extends Application {
             chips.getChildren().clear();
             if (draft.isEmpty()) {
                 Label none = new Label("(none)");
-                none.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;");
+                none.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
                 chips.getChildren().add(none);
             } else {
                 for (String u : new ArrayList<>(draft)) {
                     HBox chip = new HBox(4);
                     chip.setAlignment(Pos.CENTER_LEFT);
-                    chip.setStyle("-fx-background-color:#1e2235;-fx-background-radius:99;" +
-                            "-fx-padding:3 8 3 10;-fx-border-color:#2e3148;-fx-border-radius:99;");
+                    chip.setStyle("-fx-background-color:" + theme.bg() + ";-fx-background-radius:99;" +
+                            "-fx-padding:3 8 3 10;-fx-border-color:" + theme.border() + ";-fx-border-radius:99;");
                     Label uLbl = new Label(u);
-                    uLbl.setStyle("-fx-text-fill:#9badfb;-fx-font-size:11px;");
+                    uLbl.setStyle("-fx-text-fill:" + theme.logText() + ";-fx-font-size:11px;");
                     Button rm = new Button("×");
-                    rm.setStyle("-fx-background-color:transparent;-fx-text-fill:#7a7f9a;" +
+                    rm.setStyle("-fx-background-color:transparent;-fx-text-fill:" + theme.muted() + ";" +
                             "-fx-cursor:hand;-fx-padding:0;-fx-font-size:11px;");
-                    rm.setOnMouseEntered(e -> rm.setStyle(rm.getStyle().replace("#7a7f9a","#e05c6e")));
-                    rm.setOnMouseExited(e  -> rm.setStyle(rm.getStyle().replace("#e05c6e","#7a7f9a")));
+                    rm.setOnMouseEntered(e -> rm.setStyle(rm.getStyle().replace(theme.muted(),"#e05c6e")));
+                    rm.setOnMouseExited(e  -> rm.setStyle(rm.getStyle().replace("#e05c6e",theme.muted())));
                     rm.setOnAction(e -> { draft.remove(u); renderChipsRef[0].run(); });
                     chip.getChildren().addAll(uLbl, rm);
                     chips.getChildren().add(chip);
@@ -943,9 +948,9 @@ public class GuiApp extends Application {
 
         // Add user dropdown
         Label addLabel = new Label("Add a user:");
-        addLabel.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;");
+        addLabel.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
 
-        ComboBox<String> addCombo = darkCombo(new String[0]);
+        ComboBox<String> addCombo = themedCombo(new String[0]);
         addCombo.setMaxWidth(Double.MAX_VALUE);
         addCombo.setPrefWidth(220);
         HBox.setHgrow(addCombo, Priority.ALWAYS);
@@ -1015,22 +1020,29 @@ public class GuiApp extends Application {
 
         ScrollPane sp = new ScrollPane(box);
         sp.setFitToWidth(true);
-        sp.setStyle("-fx-background-color:#1a1d27;-fx-background:transparent;");
+        sp.setStyle("-fx-background-color:" + theme.panel() + ";-fx-background:transparent;");
         sp.skinProperty().addListener((obs, o, n) -> Platform.runLater(() -> {
             javafx.scene.Node vp = sp.lookup(".viewport");
-            if (vp != null) vp.setStyle("-fx-background-color:#1a1d27;");
+            if (vp != null) vp.setStyle("-fx-background-color:" + theme.panel() + ";");
         }));
+        // Cap how tall the ScrollPane can grow so a long user list scrolls
+        // instead of the window growing unbounded; sizeToScene() below then
+        // sizes the window to fit (up to this cap) before it's ever shown,
+        // so there's no zero/placeholder-height window at any point.
+        sp.setMaxHeight(420);
+        box.setPrefWidth(420);
 
-        Scene dlgScene = new Scene(sp, 420, 460);
-        dlgScene.setFill(Color.web("#1a1d27"));
+        Scene dlgScene = new Scene(sp);
+        dlgScene.setFill(Color.web(theme.panel()));
         dlg.setScene(dlgScene);
+        dlg.sizeToScene();
         dlg.showAndWait();
     }
 
     private RadioButton styledRadio(String text, ToggleGroup group) {
         RadioButton rb = new RadioButton(text);
         rb.setToggleGroup(group);
-        rb.setStyle("-fx-text-fill:#e2e4f0;-fx-font-size:12px;");
+        rb.setStyle("-fx-text-fill:" + theme.text() + ";-fx-font-size:12px;");
         return rb;
     }
 
@@ -1041,8 +1053,8 @@ public class GuiApp extends Application {
         title.setWrapText(true);
         String curStr = currentExpires == 0 ? "Never expires"
                 : "Expires in " + Math.max(0,(currentExpires-System.currentTimeMillis()/1000)/86400) + " day(s)";
-        Label curLbl = new Label(curStr); curLbl.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;");
-        ComboBox<String> combo = darkCombo(new String[]{
+        Label curLbl = new Label(curStr); curLbl.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
+        ComboBox<String> combo = themedCombo(new String[]{
             "Never expires","1 day","3 days","7 days","14 days","30 days","90 days","1 year"
         });
         int[] dayMap = {0,1,3,7,14,30,90,365};
@@ -1063,7 +1075,8 @@ public class GuiApp extends Application {
         });
         btnRow.getChildren().addAll(cancel, save);
         box.getChildren().addAll(title, curLbl, combo, err, btnRow);
-        dlg.setScene(new Scene(box, 320, 245)); dlg.showAndWait();
+        box.setPrefWidth(320);
+        dlg.setScene(new Scene(box)); dlg.sizeToScene(); dlg.showAndWait();
     }
 
     private void deleteArchive(int archiveId, String filename) {
@@ -1134,7 +1147,8 @@ public class GuiApp extends Application {
         });
         pw2.setOnAction(e -> btn.fire());
         box.getChildren().addAll(dialogTitle("Change Admin Password"), cur, pw1, pw2, err, btn);
-        dlg.setScene(new Scene(box, 320, 270)); dlg.showAndWait();
+        box.setPrefWidth(320);
+        dlg.setScene(new Scene(box)); dlg.sizeToScene(); dlg.showAndWait();
     }
 
     // ── Log ───────────────────────────────────────────────────────────────────
@@ -1197,6 +1211,7 @@ public class GuiApp extends Application {
         // Re-apply text field styles so they update on theme switch
         applyTextFieldStyles();
         if (titleHelp != null) titleHelp.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:10px;");
+        if (statusSep != null) statusSep.setStyle("-fx-text-fill:" + theme.border() + ";-fx-font-size:16px;");
 
         // Re-style the first-run help note
         if (firstRunNote != null) {
@@ -1344,7 +1359,7 @@ public class GuiApp extends Application {
 
     private Label colHdr(String t, double w) {
         Label l = new Label(t); l.setPrefWidth(w); l.setMinWidth(w);
-        l.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:10px;-fx-font-weight:bold;");
+        l.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:10px;-fx-font-weight:bold;");
         return l;
     }
 
@@ -1356,7 +1371,7 @@ public class GuiApp extends Application {
 
     private Label placeholder(String text) {
         Label l = new Label(text);
-        l.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;-fx-padding:10 6;");
+        l.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-padding:10 6;");
         return l;
     }
 
@@ -1422,11 +1437,11 @@ public class GuiApp extends Application {
 
     private Button ghostBtn(String text) {
         Button b = new Button(text);
-        String base = "-fx-background-color:transparent;-fx-text-fill:#7a7f9a;" +
-                "-fx-border-color:#2e3148;-fx-border-radius:6;-fx-background-radius:6;" +
+        String base = "-fx-background-color:transparent;-fx-text-fill:" + theme.muted() + ";" +
+                "-fx-border-color:" + theme.border() + ";-fx-border-radius:6;-fx-background-radius:6;" +
                 "-fx-cursor:hand;-fx-padding:7 16;";
         b.setStyle(base);
-        b.setOnMouseEntered(e -> b.setStyle(base.replace("#7a7f9a","#e2e4f0").replace("#2e3148",ACCENT)));
+        b.setOnMouseEntered(e -> b.setStyle(base.replace(theme.muted(),theme.text()).replace(theme.border(),ACCENT)));
         b.setOnMouseExited(e  -> b.setStyle(base));
         return b;
     }
@@ -1459,23 +1474,23 @@ public class GuiApp extends Application {
         b.setOnMouseExited(e  -> b.setStyle(base));
     }
 
-    private ComboBox<String> darkCombo(String[] items) {
+    private ComboBox<String> themedCombo(String[] items) {
         ComboBox<String> c = new ComboBox<>();
         c.getItems().addAll(items); c.setPrefWidth(220); c.setMaxWidth(220);
-        c.setStyle("-fx-background-color:#0f1117;-fx-border-color:#2e3148;" +
+        c.setStyle("-fx-background-color:" + theme.input() + ";-fx-border-color:" + theme.border() + ";" +
                    "-fx-border-radius:5;-fx-background-radius:5;-fx-padding:2 4;");
         javafx.util.Callback<ListView<String>,ListCell<String>> cf = lv -> {
-            if (lv != null) lv.setStyle("-fx-background-color:#1a1d27;-fx-border-color:#2e3148;");
+            if (lv != null) lv.setStyle("-fx-background-color:" + theme.panel() + ";-fx-border-color:" + theme.border() + ";");
             return new ListCell<>() {
                 @Override protected void updateItem(String item, boolean empty) {
                     super.updateItem(item, empty);
                     setText(empty||item==null?null:item);
-                    setStyle("-fx-background-color:#1a1d27;-fx-text-fill:#e2e4f0;-fx-font-size:12px;-fx-padding:5 8;");
+                    setStyle("-fx-background-color:" + theme.panel() + ";-fx-text-fill:" + theme.text() + ";-fx-font-size:12px;-fx-padding:5 8;");
                 }
                 @Override public void updateSelected(boolean sel) {
                     super.updateSelected(sel);
-                    if (!isEmpty()) setStyle("-fx-background-color:"+(sel?"#2e3148":"#1a1d27")+
-                            ";-fx-text-fill:#e2e4f0;-fx-font-size:12px;-fx-padding:5 8;");
+                    if (!isEmpty()) setStyle("-fx-background-color:"+(sel?theme.border():theme.panel())+
+                            ";-fx-text-fill:" + theme.text() + ";-fx-font-size:12px;-fx-padding:5 8;");
                 }
             };
         };
@@ -1502,14 +1517,14 @@ public class GuiApp extends Application {
     }
     private VBox dialogBox() {
         VBox b = new VBox(12); b.setPadding(new Insets(20));
-        b.setStyle("-fx-background-color:#1a1d27;"); return b;
+        b.setStyle("-fx-background-color:" + theme.panel() + ";"); return b;
     }
     private Label dialogTitle(String t) {
-        Label l = new Label(t); l.setStyle("-fx-text-fill:#e2e4f0;-fx-font-weight:bold;-fx-font-size:13px;");
+        Label l = new Label(t); l.setStyle("-fx-text-fill:" + theme.text() + ";-fx-font-weight:bold;-fx-font-size:13px;");
         l.setWrapText(true); return l;
     }
     private Label dialogSub(String t) {
-        Label l = new Label(t); l.setStyle("-fx-text-fill:#7a7f9a;-fx-font-size:11px;"); return l;
+        Label l = new Label(t); l.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;"); return l;
     }
     private PasswordField dialogPwField(String prompt) {
         PasswordField pf = new PasswordField(); pf.setPromptText(prompt);
@@ -1518,7 +1533,7 @@ public class GuiApp extends Application {
         return pf;
     }
     private Label errorLabel() {
-        Label l = new Label(""); l.setStyle("-fx-text-fill:#f18899;-fx-font-size:11px;");
+        Label l = new Label(""); l.setStyle("-fx-text-fill:#e0607a;-fx-font-size:11px;");
         l.setWrapText(true); return l;
     }
     private boolean confirm(String msg) {

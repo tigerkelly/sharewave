@@ -34,20 +34,13 @@ info "Java : $(java -version 2>&1 | head -1)"
 info "Maven: $(mvn --version | head -1)"
 hr
 
-# ── Bundle VERSION file into each module's resources ───────────────────────────
-# The VERSION file at the project root is the single source of truth.
-# Copy it into src/main/resources/VERSION for each module so it's packaged
-# into the JAR (read at runtime by AppVersion as a fallback if no external
-# VERSION file is found next to the installed JAR).
+# The VERSION file at the project root is the single source of truth —
+# both modules read it directly at runtime (see AppVersion.java in each).
+# Nothing needs to be copied or bundled into the JARs at build time.
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
-    VERSION_STR=$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION")
-    info "Version: $VERSION_STR (from VERSION file)"
-    for MOD in sharewave-server sharewave-gui; do
-        mkdir -p "$SCRIPT_DIR/$MOD/src/main/resources"
-        cp "$SCRIPT_DIR/VERSION" "$SCRIPT_DIR/$MOD/src/main/resources/VERSION"
-    done
+    info "Version: $(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION") (from VERSION file)"
 else
-    warn "No VERSION file found at project root — builds will report version 'dev'"
+    warn "No VERSION file found at project root — will report version 'dev'"
 fi
 hr
 

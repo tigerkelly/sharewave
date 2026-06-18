@@ -1,24 +1,30 @@
 package com.sharewave.server;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Provides the ShareWave version string, read from a VERSION file.
+ * Provides the ShareWave version string, read from the single VERSION
+ * file at the top of the project tree (or /opt/sharewave/VERSION once
+ * installed) — there is exactly one VERSION file; both sharewave-server
+ * and sharewave-gui read it the same way, nothing is bundled into the JAR.
  *
- * Lookup order:
- *   1. VERSION file next to the running JAR (e.g. /opt/sharewave/VERSION) —
- *      lets an admin update the version without rebuilding.
- *   2. VERSION file bundled inside the JAR (copied from the project root's
- *      VERSION file at build time by build.sh).
- *   3. "dev" if neither is found.
+ * Candidate locations, checked relative to wherever the running JAR is,
+ * in order:
+ *   1. <jar-dir>/VERSION                — installed layout: install.sh
+ *      copies sharewave-server.jar and VERSION into the same directory
+ *      (/opt/sharewave/).
+ *   2. <jar-dir>/../../VERSION          — running straight from a source
+ *      checkout, e.g. java -jar sharewave-server/target/sharewave-server.jar,
+ *      where VERSION lives at the project root, two levels above target/.
+ *
+ * Returns "dev" if no VERSION file is found in any candidate location.
  *
  * To change the version: edit the VERSION file at the project root and
  * rebuild, or edit /opt/sharewave/VERSION on an installed system (takes
- * effect on next server start / next page load).
+ * effect on next server start / next page load — no rebuild needed for
+ * the installed case).
  */
 public final class AppVersion {
     private AppVersion() {}
@@ -29,30 +35,34 @@ public final class AppVersion {
     public static String get() { return VERSION; }
 
     private static String load() {
-        // 1. External VERSION file next to the running JAR
+        Path jarDir = jarDirectory();
+        if (jarDir == null) return "dev";
+
+        Path[] candidates = {
+            jarDir.resolve("VERSION"),
+            jarDir.resolve("../../VERSION").normalize(),
+        };
+
+        for (Path candidate : candidates) {
+            try {
+                if (Files.isReadable(candidate)) {
+                    String v = Files.readString(candidate).trim();
+                    if (!v.isEmpty()) return v;
+                }
+            } catch (Exception ignored) {
+                // try next candidate
+            }
+        }
+        return "dev";
+    }
+
+    private static Path jarDirectory() {
         try {
             Path jarPath = Path.of(URI.create(
                     AppVersion.class.getProtectionDomain().getCodeSource().getLocation().toURI().toString()));
-            Path external = jarPath.getParent() != null
-                    ? jarPath.getParent().resolve("VERSION")
-                    : null;
-            if (external != null && Files.isReadable(external)) {
-                String v = Files.readString(external).trim();
-                if (!v.isEmpty()) return v;
-            }
-        } catch (Exception ignored) {
-            // Fall through to bundled resource
+            return jarPath.getParent();
+        } catch (Exception e) {
+            return null;
         }
-
-        // 2. Bundled VERSION resource (copied into the JAR at build time)
-        try (InputStream in = AppVersion.class.getResourceAsStream("/VERSION")) {
-            if (in != null) {
-                String v = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
-                if (!v.isEmpty()) return v;
-            }
-        } catch (IOException ignored) {
-        }
-
-        return "dev";
     }
 }
