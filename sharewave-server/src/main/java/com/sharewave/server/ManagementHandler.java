@@ -165,6 +165,7 @@ public class ManagementHandler {
             entry.put("uploaded",       f.uploaded);
             entry.put("expires",        f.expires);
             entry.put("lastDownloaded", f.lastDownloaded);
+            entry.put("message",        f.message != null ? f.message : "");
             result.add(entry);
         }
         return ok(Map.of("files", result));
@@ -330,7 +331,8 @@ public class ManagementHandler {
             "fileId",   fileId,
             "isPublic", rec.isPublic,
             "users",    accessUsers,
-            "allUsers", allUsers
+            "allUsers", allUsers,
+            "message",  rec.message != null ? rec.message : ""
         ));
     }
 
@@ -348,6 +350,9 @@ public class ManagementHandler {
             req.getAsJsonArray("users").forEach(e -> users.add(e.getAsString()));
         }
         db.updateFileAccess(fileId, rec.ownerId, isPublic, users);
+        if (req.has("message")) {
+            db.setFileMessage(fileId, ShareWaveHandler.sanitizeMessage(req.get("message").getAsString()));
+        }
         logger.accept("MGMT updated access for file#" + fileId +
                 " isPublic=" + isPublic + " users=" + users);
         return ok(Map.of("updated", true));

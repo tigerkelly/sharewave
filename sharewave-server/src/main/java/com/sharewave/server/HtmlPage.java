@@ -154,6 +154,14 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 
 /* ── Access control ── */
 .access-row{display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;margin-bottom:.5rem}
+.msg-icon{cursor:pointer;font-size:.85rem;opacity:.75}
+.msg-icon:hover{opacity:1}
+.msg-popover{position:fixed;z-index:1000;max-width:320px;background:var(--panel);
+             border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;
+             box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:.85rem;white-space:pre-wrap;
+             word-break:break-word}
+.msg-popover .msg-title{font-weight:600;margin-bottom:.35rem;color:var(--muted);font-size:.75rem;
+             text-transform:uppercase}
 .access-row label{display:flex;align-items:center;gap:.4rem;font-size:.875rem;
                   color:var(--text);cursor:pointer;user-select:none}
 .access-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
@@ -359,6 +367,14 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
         <option value="365">1 year</option>
       </select>
     </div>
+    <div class="field">
+      <label>Note for downloaders (optional)</label>
+      <textarea id="uploadMessage" maxlength="500" rows="2"
+                placeholder="e.g. &quot;Final draft, please review by Friday&quot;"
+                style="width:100%;resize:vertical;font-family:inherit;font-size:.85rem;
+                       padding:.5rem .6rem;border-radius:8px;border:1px solid var(--border);
+                       background:var(--bg);color:var(--text)"></textarea>
+    </div>
 
     <div class="progress-wrap" id="progressWrap">
       <div class="progress-bar" id="progressBar"></div>
@@ -372,6 +388,15 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
       <h2 style="margin-bottom:0">Files Available to You</h2>
       <button class="btn btn-ghost" onclick="loadFiles()">↻ Refresh</button>
+    </div>
+    <div id="bulkDownloadBar" class="hidden" style="display:flex;align-items:center;gap:.6rem;
+         margin-bottom:.85rem;padding:.5rem .75rem;background:var(--bg);border:1px solid var(--border);
+         border-radius:8px;font-size:.85rem">
+      <span id="bulkSelCount" style="color:var(--muted)"></span>
+      <span style="flex:1"></span>
+      <button class="btn btn-sm" onclick="downloadSelected('zip')">⬇ Download as .zip</button>
+      <button class="btn btn-sm" onclick="downloadSelected('tar')">⬇ Download as .tar.gz</button>
+      <button class="btn btn-ghost" onclick="clearFileSelection()">Clear</button>
     </div>
     <div id="fileListWrap">
       <div class="empty"><div class="icon">📭</div>No files yet.</div>
@@ -407,6 +432,14 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
         <option value="365">1 year from now</option>
         <option value="-1">Keep existing expiry</option>
       </select>
+    </div>
+    <div class="field" style="margin-top:.75rem">
+      <label>Note for downloaders (optional)</label>
+      <textarea id="modalMessage" maxlength="500" rows="2"
+                placeholder="e.g. &quot;Final draft, please review by Friday&quot;"
+                style="width:100%;resize:vertical;font-family:inherit;font-size:.85rem;
+                       padding:.5rem .6rem;border-radius:8px;border:1px solid var(--border);
+                       background:var(--bg);color:var(--text)"></textarea>
     </div>
     <div id="accessMsg"></div>
     <div class="modal-footer">
@@ -444,6 +477,11 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
     save it; otherwise it downloads to your browser's default location.
     A status message at the bottom of the screen confirms when the
     download completes.</p>
+    <p>To download several files at once, check the boxes next to them
+    (or the header checkbox to select all), then choose
+    <strong>Download as .zip</strong> or <strong>Download as .tar.gz</strong>
+    from the toolbar that appears. All selected files are bundled into a
+    single archive.</p>
 
     <h4>Access control</h4>
     <p>Each file can be set to one of two access levels:</p>
@@ -487,6 +525,7 @@ let token    = '';
 let username = '';
 let darkMode = localStorage.getItem('sw_theme') !== 'light';
 let pendingFiles = [];  // array of {file, status} objects
+let selectedFileIds = new Set();  // ids checked for bulk download
 
 // Access modal state
 let accessFileId   = null;
@@ -698,6 +737,7 @@ function resetUploadForm() {
   document.getElementById('chkSpecific').checked = false;
   document.getElementById('specificUsers').style.display = 'none';
   document.getElementById('expirySelect').value = '0';
+  document.getElementById('uploadMessage').value = '';
   renderUserCheckboxes([]);
   resetFileInput();
 }
@@ -712,6 +752,7 @@ async function doUpload() {
   const expiresTs = expiryDays > 0
       ? Math.floor(Date.now()/1000) + expiryDays * 86400
       : 0;
+  const message = document.getElementById('uploadMessage').value.trim();
 
   let successCount = 0, errorCount = 0;
 
@@ -723,7 +764,7 @@ async function doUpload() {
     renderQueue();
     showMsg(msg, 'ok', 'Uploading ' + (i+1) + ' of ' + pendingFiles.length + ': ' + entry.file.name);
 
-    const result = await uploadOneFile(entry.file, isPublic, allowedUsers, expiresTs, i, pendingFiles.length);
+    const result = await uploadOneFile(entry.file, isPublic, allowedUsers, expiresTs, message, i, pendingFiles.length);
 
     if (result.ok) {
       entry.status = 'done';
@@ -754,7 +795,7 @@ async function doUpload() {
 }
 
 // Uploads a single file. Returns a Promise resolving to {ok, cancelled}.
-function uploadOneFile(file, isPublic, allowedUsers, expiresTs, index, total) {
+function uploadOneFile(file, isPublic, allowedUsers, expiresTs, message, index, total) {
   return new Promise(resolve => {
     const send = (replace) => {
       const fd = new FormData();
@@ -762,6 +803,7 @@ function uploadOneFile(file, isPublic, allowedUsers, expiresTs, index, total) {
       fd.append('isPublic', isPublic ? 'true' : 'false');
       fd.append('allowedUsers', allowedUsers);
       fd.append('expires', expiresTs.toString());
+      fd.append('message', message || '');
 
       const pw = document.getElementById('progressWrap');
       const pb = document.getElementById('progressBar');
@@ -821,16 +863,22 @@ async function loadFiles() {
   const files=d.files||[];
   if(!files.length){
     wrap.innerHTML='<div class="empty"><div class="icon">📭</div>No files available yet.</div>';
+    selectedFileIds.clear();
+    updateBulkDownloadBar();
     return;
   }
   let html=`<table class="file-table"><thead><tr>
+    <th style="width:28px"><input type="checkbox" id="selectAllFiles" onchange="toggleSelectAllFiles(this)"></th>
     <th>Filename</th><th>Size</th><th>Owner</th><th>Access</th><th>Expires</th><th>Uploaded</th><th>Last Download</th><th></th>
   </tr></thead><tbody>`;
   files.forEach(f=>{
     const dt=fmtTimestamp(f.uploaded);
     const ownerBadge=f.isOwner?` <span class="badge-owner">you</span>`:'';
+    const checked=selectedFileIds.has(f.id)?' checked':'';
+    const msgIcon=f.message?` <span class="msg-icon" title="View note" onclick="showFileMessage('${esc(f.filename)}','${esc(f.message)}')">💬</span>`:'';
     html+=`<tr>
-      <td>${esc(f.filename)}</td>
+      <td><input type="checkbox" class="file-select-cb" value="${f.id}"${checked} onchange="onFileSelectChange(this,${f.id})"></td>
+      <td>${esc(f.filename)}${msgIcon}</td>
       <td>${fmtBytes(f.size)}</td>
       <td>${esc(f.owner)}${ownerBadge}</td>
       <td>${f.isPublic ? '<span style=\"color:var(--green);font-size:.75rem\">Public</span>' : '<span style=\"color:var(--muted);font-size:.75rem\">Private</span>'}</td>
@@ -846,6 +894,135 @@ async function loadFiles() {
   });
   html+='</tbody></table>';
   wrap.innerHTML=html;
+  // Drop any selected ids that no longer exist in the current file list
+  // (e.g. deleted/expired since last load), then refresh the toolbar.
+  const currentIds=new Set(files.map(f=>f.id));
+  for (const id of Array.from(selectedFileIds)) if (!currentIds.has(id)) selectedFileIds.delete(id);
+  updateBulkDownloadBar();
+}
+
+// ── Bulk selection / multi-file download ─────────────────────────────────
+function onFileSelectChange(cb, id) {
+  if (cb.checked) selectedFileIds.add(id);
+  else selectedFileIds.delete(id);
+  const selectAll = document.getElementById('selectAllFiles');
+  if (selectAll) {
+    const boxes = document.querySelectorAll('.file-select-cb');
+    selectAll.checked = boxes.length > 0 && Array.from(boxes).every(b => b.checked);
+  }
+  updateBulkDownloadBar();
+}
+
+function toggleSelectAllFiles(selectAllCb) {
+  document.querySelectorAll('.file-select-cb').forEach(cb => {
+    cb.checked = selectAllCb.checked;
+    const id = parseInt(cb.value, 10);
+    if (selectAllCb.checked) selectedFileIds.add(id);
+    else selectedFileIds.delete(id);
+  });
+  updateBulkDownloadBar();
+}
+
+function clearFileSelection() {
+  selectedFileIds.clear();
+  document.querySelectorAll('.file-select-cb').forEach(cb => cb.checked = false);
+  const selectAll = document.getElementById('selectAllFiles');
+  if (selectAll) selectAll.checked = false;
+  updateBulkDownloadBar();
+}
+
+function updateBulkDownloadBar() {
+  const bar = document.getElementById('bulkDownloadBar');
+  const count = selectedFileIds.size;
+  if (count > 0) {
+    bar.classList.remove('hidden');
+    document.getElementById('bulkSelCount').textContent =
+      count + ' file' + (count === 1 ? '' : 's') + ' selected';
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+async function downloadSelected(format) {
+  if (!selectedFileIds.size) return;
+  const count = selectedFileIds.size;
+  const ext = format === 'tar' ? 'tar.gz' : 'zip';
+  const suggestedName = 'sharewave-files.' + ext;
+
+  showToast('Preparing ' + count + ' file' + (count === 1 ? '' : 's') +
+             ' as .' + ext + '…', 'spinner');
+
+  try {
+    const ids = Array.from(selectedFileIds).join(',');
+    const r = await fetch('/api/download-bundle?ids=' + encodeURIComponent(ids) +
+                           '&format=' + encodeURIComponent(format),
+                           { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) {
+      const err = (await r.json()).error;
+      alert('Bundle download failed: ' + err);
+      showToast('Bundle download failed: ' + err, 'err');
+      return;
+    }
+
+    if (window.showSaveFilePicker) {
+      let handle;
+      try {
+        handle = await window.showSaveFilePicker({ suggestedName });
+      } catch (pickErr) {
+        if (pickErr.name === 'AbortError') { hideToast(); return; }
+        throw pickErr;
+      }
+      const blob = await r.blob();
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+    } else {
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = suggestedName; a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    showToast('Downloaded ' + count + ' file' + (count === 1 ? '' : 's'), 'ok');
+    clearFileSelection();
+    loadFiles(); // refresh Last Download timestamps
+  } catch (e) {
+    alert('Bundle download failed: ' + e.message);
+    showToast('Bundle download failed: ' + e.message, 'err');
+  }
+}
+
+// ── Uploader note popover ─────────────────────────────────────────────
+function showFileMessage(filename, message) {
+  closeMessagePopover();
+  const pop = document.createElement('div');
+  pop.className = 'msg-popover';
+  pop.id = 'msgPopover';
+  pop.innerHTML = '<div class="msg-title">Note from uploader</div>' + esc(message);
+  document.body.appendChild(pop);
+
+  // Position near the click, clamped to stay on-screen
+  const evt = window.event;
+  let x = evt ? evt.clientX : window.innerWidth / 2;
+  let y = evt ? evt.clientY : window.innerHeight / 2;
+  const rect = pop.getBoundingClientRect();
+  x = Math.min(x, window.innerWidth - rect.width - 12);
+  y = Math.min(y + 12, window.innerHeight - rect.height - 12);
+  pop.style.left = Math.max(8, x) + 'px';
+  pop.style.top = Math.max(8, y) + 'px';
+
+  setTimeout(() => document.addEventListener('click', closeMessagePopoverOnOutsideClick), 0);
+}
+
+function closeMessagePopoverOnOutsideClick(e) {
+  const pop = document.getElementById('msgPopover');
+  if (pop && !pop.contains(e.target)) closeMessagePopover();
+}
+
+function closeMessagePopover() {
+  const pop = document.getElementById('msgPopover');
+  if (pop) pop.remove();
+  document.removeEventListener('click', closeMessagePopoverOnOutsideClick);
 }
 
 async function doDownload(btn,id,filename) {
@@ -949,6 +1126,8 @@ async function openAccessModal(fileId, filename) {
   // Pre-select "Keep existing expiry" since we can't map a timestamp back to days
   document.getElementById('modalExpirySelect').value = '-1';
 
+  document.getElementById('modalMessage').value = d.message || '';
+
   document.getElementById('accessModal').classList.remove('hidden');
 }
 
@@ -997,7 +1176,7 @@ async function saveAccess() {
         : Math.floor(Date.now()/1000) + expiryDays * 86400;
   }
 
-  const body = { isPublic, users };
+  const body = { isPublic, users, message: document.getElementById('modalMessage').value.trim() };
   if (expiresPayload !== undefined) body.expires = expiresPayload;
 
   const r = await api('PUT', '/api/files/'+accessFileId+'/access', body);

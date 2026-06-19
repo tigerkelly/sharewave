@@ -39,8 +39,10 @@ cd sharewave
 ./build.sh
 ```
 
-This builds both `sharewave-server.jar` and `sharewave-gui.jar`, and
-downloads the JavaFX libraries the GUI needs into `~/.m2`.
+You'll be prompted for a version number (press Enter to keep the
+current one). This builds both `sharewave-server.jar` and
+`sharewave-gui.jar`, and downloads the JavaFX libraries the GUI needs
+into `~/.m2`.
 
 > Run this as your **normal user**, not root/sudo — the next step relies
 > on finding JavaFX in *your* `~/.m2`.

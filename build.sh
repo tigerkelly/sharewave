@@ -37,10 +37,24 @@ hr
 # The VERSION file at the project root is the single source of truth —
 # both modules read it directly at runtime (see AppVersion.java in each).
 # Nothing needs to be copied or bundled into the JARs at build time.
+CURRENT_VERSION="dev"
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
-    info "Version: $(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION") (from VERSION file)"
+    CURRENT_VERSION="$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION")"
+fi
+
+if [ -t 0 ]; then
+    # Interactive terminal — ask for a version, defaulting to the current one.
+    read -r -p "Version number [$CURRENT_VERSION]: " NEW_VERSION
+    NEW_VERSION="$(echo "${NEW_VERSION:-$CURRENT_VERSION}" | tr -d '[:space:]')"
+    if [ -z "$NEW_VERSION" ]; then
+        warn "Empty version entered — keeping $CURRENT_VERSION"
+        NEW_VERSION="$CURRENT_VERSION"
+    fi
+    echo "$NEW_VERSION" > "$SCRIPT_DIR/VERSION"
+    info "Version: $NEW_VERSION (written to VERSION)"
 else
-    warn "No VERSION file found at project root — will report version 'dev'"
+    # Non-interactive (CI, piped input, etc.) — don't block on a prompt.
+    info "Version: $CURRENT_VERSION (from VERSION file; non-interactive, skipping prompt)"
 fi
 hr
 

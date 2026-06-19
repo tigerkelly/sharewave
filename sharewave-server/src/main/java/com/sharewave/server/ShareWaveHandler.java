@@ -15,6 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Jetty HttpServlet — handles all ShareWave API and page endpoints.
@@ -129,6 +132,8 @@ public class ShareWaveHandler extends HttpServlet {
             handleGetAccess(req, resp, path);
         } else if (path.startsWith("/api/download/")) {
             handleDownload(req, resp, path.substring("/api/download/".length()));
+        } else if (path.equals("/api/download-bundle")) {
+            handleDownloadBundle(req, resp);
         } else {
             sendJson(resp, 404, Map.of("error", "Not found"));
         }
@@ -262,6 +267,7 @@ public class ShareWaveHandler extends HttpServlet {
                 entry.put("uploaded",       f.uploaded);
                 entry.put("expires",        f.expires);
                 entry.put("lastDownloaded", f.lastDownloaded);
+                entry.put("message",        f.message != null ? f.message : "");
                 result.add(entry);
             }
             sendJson(resp, 200, Map.of("files", result));
@@ -387,7 +393,14 @@ public class ShareWaveHandler extends HttpServlet {
                 }
             }
 
-            int fid = db.insertFile(origFilename, storedName, uid, fileSize, isPublic, expires, allowedIds);
+            // Optional note from the uploader, shown to downloaders
+            Part messagePart = req.getPart("message");
+            String message = messagePart != null
+                    ? sanitizeMessage(new String(messagePart.getInputStream().readAllBytes(),
+                                                  StandardCharsets.UTF_8))
+                    : null;
+
+            int fid = db.insertFile(origFilename, storedName, uid, fileSize, isPublic, expires, allowedIds, message);
             logger.accept("UPLOAD ok: " + origFilename + " (" + fmtBytes(fileSize) + ") by "
                     + db.getUsername(uid));
             sendJson(resp, 200, Map.of("id", fid, "filename", origFilename, "size", fileSize));
@@ -460,7 +473,126 @@ public class ShareWaveHandler extends HttpServlet {
         }
     }
 
-    /** GET /api/files/{id}/access — returns current access list for a file the caller owns. */
+    /**
+     * GET /api/download-bundle?ids=1,2,3&format=zip|tar
+     * Bundles multiple files the caller has access to into a single
+     * .zip or .tar and streams it as one download. Files the caller can't
+     * access, that are expired, or missing on disk are silently skipped
+     * (rather than failing the whole bundle) so one bad id doesn't block
+     * downloading the rest.
+     */
+    private void handleDownloadBundle(HttpServletRequest req, HttpServletResponse resp)
+            throws IOException {
+        int uid = requireAuth(req, resp); if (uid < 0) return;
+
+        String idsParam = req.getParameter("ids");
+        if (idsParam == null || idsParam.isBlank()) {
+            sendJson(resp, 400, Map.of("error", "No file ids provided")); return;
+        }
+        String format = req.getParameter("format");
+        boolean useTar = "tar".equalsIgnoreCase(format);
+
+        List<Integer> ids = new ArrayList<>();
+        for (String part : idsParam.split(",")) {
+            part = part.trim();
+            if (part.isEmpty()) continue;
+            try { ids.add(Integer.parseInt(part)); }
+            catch (NumberFormatException ignored) { /* skip malformed id */ }
+        }
+        if (ids.isEmpty()) {
+            sendJson(resp, 400, Map.of("error", "No valid file ids provided")); return;
+        }
+
+        // Collect the records we can actually serve, deduplicating filenames
+        // within the archive (e.g. two different owners both named a file
+        // "report.pdf") by suffixing " (2)", " (3)", etc.
+        List<Database.FileRecord> toBundle = new ArrayList<>();
+        Set<String> usedNames = new HashSet<>();
+        List<String> entryNames = new ArrayList<>();
+
+        try {
+            for (int fileId : ids) {
+                if (!db.canAccess(fileId, uid)) continue;
+                Database.FileRecord rec = db.getFile(fileId);
+                if (rec == null || rec.isExpired()) continue;
+                Path filePath = resolveStoredPath(rec.ownerId, rec.storedName);
+                if (!Files.exists(filePath)) continue;
+
+                toBundle.add(rec);
+                entryNames.add(uniqueEntryName(rec.filename, usedNames));
+            }
+        } catch (Exception e) {
+            sendJson(resp, 500, Map.of("error", "Failed to prepare bundle")); return;
+        }
+
+        if (toBundle.isEmpty()) {
+            sendJson(resp, 404, Map.of("error", "None of the requested files are available")); return;
+        }
+
+        String archiveName = "sharewave-files-" + System.currentTimeMillis() / 1000
+                + (useTar ? ".tar.gz" : ".zip");
+        String encoded = URLEncoder.encode(archiveName, StandardCharsets.UTF_8).replace("+", "%20");
+        resp.setContentType(useTar ? "application/gzip" : "application/zip");
+        resp.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+        // Size isn't known up front (zip/tar overhead varies), so this is
+        // streamed without a Content-Length header (chunked transfer).
+
+        try {
+            if (useTar) {
+                // Wrap with GZIPOutputStream to produce a compressed .tar.gz;
+                // TarWriter writes to the gzip stream, which compresses on the fly.
+                try (GZIPOutputStream gzip = new GZIPOutputStream(new BufferedOutputStream(resp.getOutputStream(), BUF));
+                     TarWriter tw = new TarWriter(gzip)) {
+                    for (int i = 0; i < toBundle.size(); i++) {
+                        Database.FileRecord rec = toBundle.get(i);
+                        Path filePath = resolveStoredPath(rec.ownerId, rec.storedName);
+                        try (InputStream in = new BufferedInputStream(Files.newInputStream(filePath), BUF)) {
+                            tw.putEntry(entryNames.get(i), Files.size(filePath), in);
+                        }
+                        db.updateLastDownloaded(rec.id);
+                    }
+                    tw.finish();
+                }
+            } else {
+                try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(resp.getOutputStream(), BUF))) {
+                    for (int i = 0; i < toBundle.size(); i++) {
+                        Database.FileRecord rec = toBundle.get(i);
+                        Path filePath = resolveStoredPath(rec.ownerId, rec.storedName);
+                        ZipEntry entry = new ZipEntry(entryNames.get(i));
+                        entry.setSize(Files.size(filePath));
+                        zos.putNextEntry(entry);
+                        try (InputStream in = new BufferedInputStream(Files.newInputStream(filePath), BUF)) {
+                            in.transferTo(zos);
+                        }
+                        zos.closeEntry();
+                        db.updateLastDownloaded(rec.id);
+                    }
+                }
+            }
+            logger.accept("DOWNLOAD-BUNDLE " + toBundle.size() + " file(s) as "
+                    + (useTar ? "tar.gz" : "zip") + " by " + db.getUsername(uid));
+        } catch (Exception e) {
+            logger.accept("DOWNLOAD-BUNDLE ERROR: " + e.getMessage());
+        }
+    }
+
+    /** Returns a filename guaranteed not to collide with anything already in {@code used}, adding " (2)", " (3)", etc. as needed. */
+    private static String uniqueEntryName(String filename, Set<String> used) {
+        if (used.add(filename)) return filename;
+        String base = filename;
+        String ext = "";
+        int dot = filename.lastIndexOf('.');
+        if (dot > 0) { base = filename.substring(0, dot); ext = filename.substring(dot); }
+        int n = 2;
+        String candidate;
+        do {
+            candidate = base + " (" + n + ")" + ext;
+            n++;
+        } while (!used.add(candidate));
+        return candidate;
+    }
+
+
     private void handleGetAccess(HttpServletRequest req, HttpServletResponse resp,
                                   String path) throws IOException {
         int uid = requireAuth(req, resp); if (uid < 0) return;
@@ -474,7 +606,8 @@ public class ShareWaveHandler extends HttpServlet {
             Database.FileRecord rec2 = db.getFile(fileId);
             sendJson(resp, 200, Map.of("fileId", fileId, "users", users,
                     "isPublic", rec2 != null && rec2.isPublic,
-                    "expires",  rec2 != null ? rec2.expires : 0));
+                    "expires",  rec2 != null ? rec2.expires : 0,
+                    "message",  rec2 != null && rec2.message != null ? rec2.message : ""));
         } catch (Exception e) { sendJson(resp, 500, Map.of("error", e.getMessage())); }
     }
 
@@ -498,6 +631,11 @@ public class ShareWaveHandler extends HttpServlet {
             if (body.containsKey("expires")) {
                 long exp = ((Number) body.get("expires")).longValue();
                 db.updateFileExpiry(fileId, uid, exp);
+            }
+            // Update the uploader's note if provided
+            if (body.containsKey("message")) {
+                Object msg = body.get("message");
+                db.updateFileMessage(fileId, uid, sanitizeMessage(msg != null ? msg.toString() : null));
             }
             db.updateFileAccess(fileId, uid, isPublic, users);
             logger.accept("ACCESS UPDATE file#" + fileId + " -> " + users
@@ -594,6 +732,29 @@ public class ShareWaveHandler extends HttpServlet {
         // Avoid "." / ".." / hidden-file-like or empty results
         if (safe.isEmpty() || safe.equals(".") || safe.equals("..")) return "_unknown";
         return safe;
+    }
+
+    private static final int MAX_MESSAGE_LENGTH = 500;
+
+    /**
+     * Cleans up an uploader-supplied note shown to downloaders: trims
+     * whitespace, strips control characters (keeping newlines/tabs), and
+     * caps length. Returns null if the result is empty (no note).
+     */
+    static String sanitizeMessage(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.strip();
+        if (trimmed.isEmpty()) return null;
+        // Strip control characters except \n and \t
+        StringBuilder sb = new StringBuilder(trimmed.length());
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c == '\n' || c == '\t' || !Character.isISOControl(c)) sb.append(c);
+        }
+        String cleaned = sb.toString().strip();
+        if (cleaned.isEmpty()) return null;
+        if (cleaned.length() > MAX_MESSAGE_LENGTH) cleaned = cleaned.substring(0, MAX_MESSAGE_LENGTH);
+        return cleaned;
     }
 
     private static String fmtBytes(long b) {

@@ -609,13 +609,27 @@ public class GuiApp extends Application {
         long   uploaded       = f.get("uploaded").getAsLong();
         long   expires        = f.get("expires").getAsLong();
         long   lastDownloaded = f.has("lastDownloaded") ? f.get("lastDownloaded").getAsLong() : 0;
+        String message        = f.has("message") ? f.get("message").getAsString() : "";
 
         HBox row = new HBox(0); row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(5,10,5,10));
         row.setStyle("-fx-background-color:" + (i%2==0 ? theme.panel() : theme.bg()) + ";");
 
-        Label fnLbl = rowCell(filename, 220);
+        Label fnLbl = rowCell(filename, message.isEmpty() ? 220 : 196);
         fnLbl.setStyle(fnLbl.getStyle() + "-fx-font-weight:600;");
+        HBox fnBox = new HBox(4); fnBox.setAlignment(Pos.CENTER_LEFT);
+        fnBox.setPrefWidth(220); fnBox.setMinWidth(220);
+        fnBox.getChildren().add(fnLbl);
+        if (!message.isEmpty()) {
+            Label msgIcon = new Label("💬");
+            msgIcon.setStyle("-fx-font-size:11px;-fx-cursor:hand;");
+            Tooltip tip = new Tooltip(message);
+            tip.setShowDuration(Duration.seconds(30));
+            tip.setWrapText(true);
+            tip.setMaxWidth(300);
+            Tooltip.install(msgIcon, tip);
+            fnBox.getChildren().add(msgIcon);
+        }
         Label ownerLbl = rowCell(owner, 75);
         Label sizeLbl  = rowCell(fmtBytes(size), 60);
 
@@ -669,7 +683,7 @@ public class GuiApp extends Application {
 
         actions.getChildren().addAll(accessBtn, expiryBtn, delBtn);
 
-        row.getChildren().addAll(fnLbl, ownerLbl, sizeLbl, accessLbl,
+        row.getChildren().addAll(fnBox, ownerLbl, sizeLbl, accessLbl,
                 expLbl, upLbl, dlLbl, actions);
         return row;
     }
@@ -874,9 +888,10 @@ public class GuiApp extends Application {
                 List<String> allUsers = new ArrayList<>();
                 if (resp.has("allUsers"))
                     resp.getAsJsonArray("allUsers").forEach(e -> allUsers.add(e.getAsString()));
+                String message = resp.has("message") ? resp.get("message").getAsString() : "";
 
                 Platform.runLater(() -> buildAccessDialog(fileId, filename,
-                        isPublic, currentUsers, allUsers));
+                        isPublic, currentUsers, allUsers, message));
             } catch (Exception e) {
                 appendLog("ERROR fetching access: " + e.getMessage());
             }
@@ -884,7 +899,7 @@ public class GuiApp extends Application {
     }
 
     private void buildAccessDialog(int fileId, String filename, boolean isPublic,
-                                    List<String> currentUsers, List<String> allUsers) {
+                                    List<String> currentUsers, List<String> allUsers, String message) {
         Stage dlg = dialogStage("Manage Access — " + filename);
         dlg.setResizable(true);
 
@@ -988,6 +1003,16 @@ public class GuiApp extends Application {
         rbPublic.setOnAction(e   -> { specificBox.setVisible(false); specificBox.setManaged(false); });
         rbSpecific.setOnAction(e -> { specificBox.setVisible(true);  specificBox.setManaged(true);  });
 
+        // ── Note for downloaders ─────────────────────────────────────────────
+        Label msgLabel = new Label("Note for downloaders (optional)");
+        msgLabel.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-text-transform:uppercase;");
+        TextArea messageField = new TextArea(message == null ? "" : message);
+        messageField.setWrapText(true);
+        messageField.setPrefRowCount(3);
+        messageField.setPrefWidth(360);
+        messageField.setStyle("-fx-control-inner-background:" + theme.input() + ";-fx-text-fill:" + theme.text() +
+                ";-fx-border-color:" + theme.border() + ";-fx-border-radius:5;-fx-background-radius:5;-fx-font-size:12px;");
+
         // ── Buttons ─────────────────────────────────────────────────────────
         Label err = errorLabel();
         HBox btnRow = new HBox(8); btnRow.setAlignment(Pos.CENTER_RIGHT);
@@ -999,13 +1024,15 @@ public class GuiApp extends Application {
             List<String> users;
             if (pub) users = List.of();
             else     users = new ArrayList<>(draft);
+            String msgText = messageField.getText() == null ? "" : messageField.getText().trim();
 
             new Thread(() -> {
                 try {
                     client.cmd("set_file_access",
                             "fileId",   fileId,
                             "isPublic", pub,
-                            "users",    users);
+                            "users",    users,
+                            "message",  msgText);
                     Platform.runLater(() -> { dlg.close(); refreshFiles(); });
                 } catch (Exception ex) {
                     Platform.runLater(() -> err.setText(ex.getMessage()));
@@ -1016,7 +1043,7 @@ public class GuiApp extends Application {
         btnRow.getChildren().addAll(cancelBtn, saveBtn);
 
         box.getChildren().addAll(title, modeLabel, rbPublic, rbSpecific,
-                specificBox, err, btnRow);
+                specificBox, msgLabel, messageField, err, btnRow);
 
         ScrollPane sp = new ScrollPane(box);
         sp.setFitToWidth(true);

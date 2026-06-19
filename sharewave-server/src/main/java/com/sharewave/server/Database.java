@@ -71,6 +71,9 @@ public class Database {
             // last_downloaded = Unix timestamp of most recent download; 0 = never downloaded
             try { st.execute("ALTER TABLE files ADD COLUMN last_downloaded INTEGER NOT NULL DEFAULT 0"); }
             catch (SQLException ignored) {}
+            // message = optional note from the uploader, shown to downloaders; NULL/empty = none
+            try { st.execute("ALTER TABLE files ADD COLUMN message TEXT"); }
+            catch (SQLException ignored) {}
             st.execute("""
                 CREATE TABLE IF NOT EXISTS file_access (
                     file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
@@ -209,7 +212,7 @@ public class Database {
     /** Inserts a file record and its access list. Returns the new file id. */
     public int insertFile(String filename, String storedName, int ownerId,
                           long size, boolean isPublic, long expires,
-                          List<Integer> allowedUserIds) throws SQLException {
+                          List<Integer> allowedUserIds, String message) throws SQLException {
         // Use explicit SQL transactions instead of setAutoCommit to avoid
         // leaving the connection in a non-autocommit state on error
         try (Statement st = conn.createStatement()) {
@@ -218,7 +221,7 @@ public class Database {
         try {
             int fileId;
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO files(filename,storedName,owner_id,size,is_public,expires) VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO files(filename,storedName,owner_id,size,is_public,expires,message) VALUES(?,?,?,?,?,?,?)",
                     Statement.RETURN_GENERATED_KEYS)) {
                 ps.setString(1, filename);
                 ps.setString(2, storedName);
@@ -226,6 +229,8 @@ public class Database {
                 ps.setLong(4, size);
                 ps.setInt(5, isPublic ? 1 : 0);
                 ps.setLong(6, expires);
+                if (message == null || message.isBlank()) ps.setNull(7, java.sql.Types.VARCHAR);
+                else ps.setString(7, message);
                 ps.executeUpdate();
                 ResultSet keys = ps.getGeneratedKeys();
                 fileId = keys.next() ? keys.getInt(1) : -1;
@@ -296,11 +301,34 @@ public class Database {
         }
     }
 
+    /** Updates the uploader's note unconditionally (admin use). Null/blank clears it. */
+    public void setFileMessage(int fileId, String message) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE files SET message=? WHERE id=?")) {
+            if (message == null || message.isBlank()) ps.setNull(1, java.sql.Types.VARCHAR);
+            else ps.setString(1, message);
+            ps.setInt(2, fileId);
+            ps.executeUpdate();
+        }
+    }
+
     /** Updates the expiry timestamp for a file. 0 = never expires. */
     public void updateFileExpiry(int fileId, int ownerId, long expires) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE files SET expires=? WHERE id=? AND owner_id=?")) {
             ps.setLong(1, expires);
+            ps.setInt(2, fileId);
+            ps.setInt(3, ownerId);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Updates the uploader's note for a file. Null/blank clears it. */
+    public void updateFileMessage(int fileId, int ownerId, String message) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE files SET message=? WHERE id=? AND owner_id=?")) {
+            if (message == null || message.isBlank()) ps.setNull(1, java.sql.Types.VARCHAR);
+            else ps.setString(1, message);
             ps.setInt(2, fileId);
             ps.setInt(3, ownerId);
             ps.executeUpdate();
@@ -428,13 +456,14 @@ public class Database {
         public final long    uploaded;
         public final long    expires;        // Unix timestamp; 0 = never
         public final long    lastDownloaded; // Unix timestamp; 0 = never downloaded
+        public final String  message;        // optional note from the uploader; null/empty = none
         public FileRecord(int id, String filename, String storedName,
                           int ownerId, long size, boolean isPublic,
-                          long uploaded, long expires, long lastDownloaded) {
+                          long uploaded, long expires, long lastDownloaded, String message) {
             this.id = id; this.filename = filename; this.storedName = storedName;
             this.ownerId = ownerId; this.size = size; this.isPublic = isPublic;
             this.uploaded = uploaded; this.expires = expires;
-            this.lastDownloaded = lastDownloaded;
+            this.lastDownloaded = lastDownloaded; this.message = message;
         }
         public boolean isExpired() {
             return expires > 0 && System.currentTimeMillis() / 1000 > expires;
@@ -446,7 +475,7 @@ public class Database {
         List<FileRecord> list = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement("""
                 SELECT DISTINCT f.id, f.filename, f.storedName, f.owner_id,
-                                f.size, f.is_public, f.uploaded, f.expires, f.last_downloaded
+                                f.size, f.is_public, f.uploaded, f.expires, f.last_downloaded, f.message
                 FROM files f
                 LEFT JOIN file_access fa ON fa.file_id = f.id AND fa.user_id = ?
                 WHERE (f.is_public = 1 OR fa.user_id IS NOT NULL)
@@ -466,13 +495,14 @@ public class Database {
         return new FileRecord(rs.getInt("id"), rs.getString("filename"),
                 rs.getString("storedName"), rs.getInt("owner_id"),
                 rs.getLong("size"), rs.getInt("is_public") == 1,
-                rs.getLong("uploaded"), rs.getLong("expires"), rs.getLong("last_downloaded"));
+                rs.getLong("uploaded"), rs.getLong("expires"), rs.getLong("last_downloaded"),
+                rs.getString("message"));
     }
 
     /** Returns a file owned by the given user with the given filename, or null. */
     public FileRecord findByOwnerAndFilename(int ownerId, String filename) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT id,filename,storedName,owner_id,size,is_public,uploaded,expires,last_downloaded " +
+                "SELECT id,filename,storedName,owner_id,size,is_public,uploaded,expires,last_downloaded,message " +
                 "FROM files WHERE owner_id=? AND filename=? LIMIT 1")) {
             ps.setInt(1, ownerId);
             ps.setString(2, filename);
@@ -485,7 +515,7 @@ public class Database {
     /** Returns a single FileRecord by id, or null. */
     public FileRecord getFile(int fileId) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT id,filename,storedName,owner_id,size,is_public,uploaded,expires,last_downloaded " +
+                "SELECT id,filename,storedName,owner_id,size,is_public,uploaded,expires,last_downloaded,message " +
                 "FROM files WHERE id=?")) {
             ps.setInt(1, fileId);
             ResultSet rs = ps.executeQuery();
@@ -523,7 +553,7 @@ public class Database {
         List<FileRecord> list = new ArrayList<>();
         try (Statement st = conn.createStatement()) {
             ResultSet rs = st.executeQuery(
-                    "SELECT id,filename,storedName,owner_id,size,is_public,uploaded,expires,last_downloaded " +
+                    "SELECT id,filename,storedName,owner_id,size,is_public,uploaded,expires,last_downloaded,message " +
                     "FROM files ORDER BY uploaded DESC");
             while (rs.next())
                 list.add(fromResultSet(rs));

@@ -47,6 +47,8 @@ Web users access ShareWave through any browser at the server's HTTPS address.
 | **Expiry** | 1 / 3 / 7 / 14 / 30 / 90 / 365 days or never; auto-archived on expiry |
 | **Per-user storage** | Each account's uploads live in their own subdirectory under `uploads/` |
 | **Download tracking** | Last-download timestamp shown per file (web UI and GUI) |
+| **Bulk download** | Select multiple files in the web UI and download them as one `.zip` or `.tar.gz` |
+| **Uploader notes** | Optional note attached to each file, visible to downloaders; editable later (web UI and GUI) |
 | **Archive** | Expired files moved to `uploads/archive/`, managed by admin |
 | **Logging** | Rotating log files (1 MB / 2 backups) in `uploads/logs/`; full log + live stream in GUI |
 | **Disk usage** | GUI shows filesystem space used/free and ShareWave's own storage footprint |
@@ -58,7 +60,7 @@ Web users access ShareWave through any browser at the server's HTTPS address.
 
 ## Screenshots
 
-**Web UI** — drag-and-drop upload, access control, and the optional site title bar:
+**Web UI** — drag-and-drop upload, optional note for downloaders, access control, and bulk-select for multi-file download:
 
 ![ShareWave web UI](docs/images/sharewave_web.png)
 
@@ -163,13 +165,20 @@ web UI header ("v1.0 by Kelly Wiles") and the admin GUI's title bar.
 
 **To change the version:**
 
-1. Edit `VERSION` at the project root (a single line, e.g. `1.1`)
-2. `sudo ./install.sh` — copies the updated `VERSION` to
-   `/opt/sharewave/VERSION` alongside the JARs
+Run `./build.sh` — it prompts for a version number (showing the current
+one as the default; press Enter to keep it) and writes it to `VERSION`
+before building. Then `sudo ./install.sh` to copy the updated `VERSION`
+to `/opt/sharewave/VERSION` alongside the JARs.
 
-No rebuild is required — `AppVersion` reads `VERSION` fresh from disk
-each time the JAR starts, so installing picks up the new version on the
-next server/GUI restart.
+The prompt is skipped automatically in non-interactive contexts (CI,
+piped input, etc.) — the existing `VERSION` is left as-is and the build
+proceeds without blocking. You can also edit `VERSION` directly at any
+time instead of using the prompt.
+
+No rebuild is required for a version-only change on an already-installed
+system — `AppVersion` reads `VERSION` fresh from disk each time the JAR
+starts, so editing `/opt/sharewave/VERSION` and restarting the
+server/GUI is enough.
 
 **Running from source without installing:** `AppVersion` also checks two
 directories above the running JAR (e.g.
@@ -480,21 +489,33 @@ account or sign in. The admin can also create accounts from the GUI's
 2. Choose who can download them: **Public** or **Specific users**.
 3. Set an optional expiry (Never / 1–365 days). These settings apply to the
    whole batch.
-4. Click **Upload**. Files upload one at a time with a progress bar. If a
+4. Optionally add a **note for downloaders** — a short message (up to 500
+   characters) shown to anyone who can see the file, e.g. "Final draft,
+   please review by Friday." This also applies to the whole batch.
+5. Click **Upload**. Files upload one at a time with a progress bar. If a
    file with the same name already exists, you'll be asked whether to
    replace it before that file uploads.
 
 ### Download / Erase
 The file table shows every file you have access to, including when it was
-uploaded and when it was last downloaded (or "—" if never).
+uploaded and when it was last downloaded (or "—" if never). Files with a
+note from the uploader show a 💬 icon next to the filename — click it to
+read the note.
 - **D** (Download) — opens a native "Save As" dialog (in browsers that
   support the File System Access API) so you can choose where to save the
   file; falls back to the browser's normal download otherwise. A status
   toast confirms when the download completes.
 - **A** (Access) — owner only; change who can download the file (Public /
-  Specific users).
+  Specific users) and edit or clear the note.
 - **E** (Erase) — owner only; permanently removes the file from disk and
   database.
+
+### Downloading multiple files at once
+Check the boxes next to the files you want (or the header checkbox to
+select every visible file), then use the toolbar that appears above the
+table to download them all as a single **.zip** or **.tar.gz** archive.
+Files you don't have access to, that have expired, or are missing on
+disk are silently skipped rather than failing the whole download.
 
 ---
 
@@ -508,8 +529,10 @@ configuration (web port, upload dir, database, keystore). Click
 
 ### 📁 Files
 All uploaded files across every user, including owner, size, access, expiry,
-upload time, and last-download time. Per-file buttons:
-- **A** (Access) — manage who can download the file (Public or specific users).
+upload time, and last-download time. A 💬 icon next to the filename shows
+the uploader's note on hover, if one was set. Per-file buttons:
+- **A** (Access) — manage who can download the file (Public or specific
+  users) and edit or clear the note.
 - **E** (Expiry) — change or clear the expiry date.
 - **D** (Delete) — permanently remove from disk and database.
 
@@ -662,6 +685,7 @@ sharewave/
 │       ├── SessionManager.java      In-memory session tokens
 │       ├── CertUtil.java            TLS keystore generation
 │       ├── AppVersion.java          Reads the project-root/installed VERSION file
+│       ├── TarWriter.java           Minimal dependency-free ustar tar writer (for bundle downloads)
 │       └── FileLogger.java          Rotating file logger (1 MB / 2 backups)
 │
 └── sharewave-gui/
@@ -728,11 +752,13 @@ All endpoints except `/api/register` and `/api/login` require
 | `GET` | `/api/files` | ✓ | List accessible files |
 | `POST` | `/api/upload` | ✓ | Upload file (`multipart/form-data`) |
 | `GET` | `/api/download/{id}` | ✓ | Download file |
+| `GET` | `/api/download-bundle` | ✓ | Download multiple files as one `.zip`/`.tar.gz` — `?ids=1,2,3&format=zip\|tar` |
 | `DELETE` | `/api/delete/{id}` | ✓ | Delete file (owner only) |
-| `GET` | `/api/files/{id}/access` | ✓ | Get access list (owner only) |
-| `PUT` | `/api/files/{id}/access` | ✓ | Update access list + expiry (owner only) |
+| `GET` | `/api/files/{id}/access` | ✓ | Get access list + note (owner only) |
+| `PUT` | `/api/files/{id}/access` | ✓ | Update access list, expiry, and/or note (owner only) |
 
 Add `?replace=true` to `/api/upload` to overwrite an existing same-name file.
+The upload form also accepts an optional `message` field (note for downloaders, max 500 characters).
 
 ---
 
