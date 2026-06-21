@@ -584,6 +584,7 @@ function handleSessionExpired() {
   token = ''; username = '';
   showAuth();
   switchTab('login');
+  document.getElementById('loginPass').value = '';
   showMsg(document.getElementById('loginMsg'), 'err', 'Your session has expired — please log in again.');
 }
 
