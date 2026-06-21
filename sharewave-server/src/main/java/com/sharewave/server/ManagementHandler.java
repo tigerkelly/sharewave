@@ -132,7 +132,8 @@ public class ManagementHandler {
             "keystore",    config.getKeystore(),
             "theme",       config.getTheme(),
             "siteTitle",   config.getSiteTitle(),
-            "siteVersion", AppVersion.get()
+            "siteVersion", AppVersion.get(),
+            "sessionTimeoutMinutes", config.getSessionTimeoutMinutes()
         ));
     }
 
@@ -144,6 +145,8 @@ public class ManagementHandler {
         if (req.has("keystore"))    config.setKeystore(req.get("keystore").getAsString());
         if (req.has("theme"))       config.setTheme(req.get("theme").getAsString());
         if (req.has("siteTitle"))   config.setSiteTitle(req.get("siteTitle").getAsString());
+        if (req.has("sessionTimeoutMinutes"))
+            config.setSessionTimeoutMinutes(req.get("sessionTimeoutMinutes").getAsString());
         config.save();
         logger.accept("MGMT config updated by GUI");
         return ok(Map.of("saved", true));

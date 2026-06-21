@@ -88,6 +88,9 @@ header{width:100%;background:var(--panel);border-bottom:1px solid var(--border);
 @media (max-width:520px){.logo .subtitle{display:none}}
 .header-right{display:flex;align-items:center;gap:.75rem}
 .user-badge{font-size:.85rem;color:var(--muted)}
+.session-timer{font-size:.78rem;color:var(--muted);margin-right:.75rem;
+               font-variant-numeric:tabular-nums}
+.session-timer.warn{color:var(--danger);font-weight:600}
 .user-badge span{color:var(--text);font-weight:600}
 
 /* ── Site title bar ── */
@@ -286,6 +289,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
     <button class="theme-btn" id="helpBtn" onclick="openHelpModal()">? Help</button>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀ Light</button>
     <div class="user-badge hidden" id="headerUser">
+      <span id="sessionTimer" class="session-timer" title="Time until your session expires from inactivity"></span>
       <span id="headerUsername"></span>
       <button class="btn btn-ghost" onclick="doLogout()" style="margin-left:.5rem">Sign out</button>
     </div>
@@ -526,6 +530,9 @@ let username = '';
 let darkMode = localStorage.getItem('sw_theme') !== 'light';
 let pendingFiles = [];  // array of {file, status} objects
 let selectedFileIds = new Set();  // ids checked for bulk download
+let sessionTimeoutSeconds = 30 * 60;  // overwritten from server on login/register
+let sessionExpiresAt = 0;             // Date.now()-style ms timestamp
+let sessionTimerInterval = null;
 
 // Access modal state
 let accessFileId   = null;
@@ -570,12 +577,60 @@ function showAuth() {
   document.getElementById('authView').classList.remove('hidden');
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('headerUser').classList.add('hidden');
+  stopSessionTimer();
+}
+/** Clears the stale session and returns to the login screen with an explanation. */
+function handleSessionExpired() {
+  token = ''; username = '';
+  showAuth();
+  switchTab('login');
+  showMsg(document.getElementById('loginMsg'), 'err', 'Your session has expired — please log in again.');
+}
+
+// ── Session countdown ─────────────────────────────────────────────────
+// The server expires a session after sessionTimeoutSeconds of inactivity,
+// refreshed on every authenticated request (see SessionManager.resolve).
+// This countdown mirrors that: it resets to the full duration whenever an
+// authenticated call succeeds (see api(), and the two direct-fetch download
+// functions), so the displayed time stays accurate without polling the
+// server. It does NOT reset on its own just from the tab being open and
+// idle — exactly like the real session.
+function startSessionTimer() {
+  sessionExpiresAt = Date.now() + sessionTimeoutSeconds * 1000;
+  renderSessionTimer();
+  clearInterval(sessionTimerInterval);
+  sessionTimerInterval = setInterval(renderSessionTimer, 1000);
+}
+function restartSessionTimer() {
+  if (!sessionTimerInterval) return; // not logged in / timer not running
+  sessionExpiresAt = Date.now() + sessionTimeoutSeconds * 1000;
+}
+function stopSessionTimer() {
+  clearInterval(sessionTimerInterval);
+  sessionTimerInterval = null;
+}
+function renderSessionTimer() {
+  const el = document.getElementById('sessionTimer');
+  if (!el) return;
+  const remainingMs = sessionExpiresAt - Date.now();
+  if (remainingMs <= 0) {
+    el.textContent = '';
+    stopSessionTimer();
+    if (token) handleSessionExpired(); // preempt the next failed request
+    return;
+  }
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  el.textContent = 'Session: ' + mins + ':' + String(secs).padStart(2, '0');
+  el.classList.toggle('warn', totalSeconds <= 60);
 }
 function showApp() {
   document.getElementById('authView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
   document.getElementById('headerUser').classList.remove('hidden');
   document.getElementById('headerUsername').textContent = username;
+  startSessionTimer();
   loadUsers(); loadFiles();
 }
 function switchTab(t) {
@@ -592,7 +647,7 @@ async function doLogin() {
   const r=await api('POST','/api/login',{username:u,password:p});
   const d=await r.json();
   if(!r.ok){showMsg(msg,'err',d.error||'Login failed');return}
-  persist(d.token,d.username); showApp();
+  persist(d.token,d.username,d.expiresInSeconds); showApp();
 }
 async function doRegister() {
   const u=document.getElementById('regUser').value.trim();
@@ -602,7 +657,7 @@ async function doRegister() {
   const r=await api('POST','/api/register',{username:u,password:p});
   const d=await r.json();
   if(!r.ok){showMsg(msg,'err',d.error||'Registration failed');return}
-  persist(d.token,d.username); showApp();
+  persist(d.token,d.username,d.expiresInSeconds); showApp();
 }
 async function doLogout() {
   await api('POST','/api/logout');
@@ -610,8 +665,9 @@ async function doLogout() {
   // Nothing to clear from localStorage — credentials were memory-only.
   showAuth();
 }
-function persist(t,u){
+function persist(t,u,expiresInSeconds){
   token=t; username=u;
+  if (expiresInSeconds) sessionTimeoutSeconds = expiresInSeconds;
   // Token and username are kept in memory only — not saved to localStorage.
   // Users must log in each time they open the page.
 }
@@ -959,10 +1015,15 @@ async function downloadSelected(format) {
                            { headers: { Authorization: 'Bearer ' + token } });
     if (!r.ok) {
       const err = (await r.json()).error;
+      if (r.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       alert('Bundle download failed: ' + err);
       showToast('Bundle download failed: ' + err, 'err');
       return;
     }
+    restartSessionTimer();
 
     if (window.showSaveFilePicker) {
       let handle;
@@ -1039,12 +1100,17 @@ async function doDownload(btn,id,filename) {
     const r=await fetch('/api/download/'+id,{headers:{Authorization:'Bearer '+token}});
     if(!r.ok){
       const err = (await r.json()).error;
-      alert('Download failed: '+err);
-      showToast('Download failed: ' + err, 'err');
       btn.textContent = origText;
       btn.title = origTitle;
+      if (r.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      alert('Download failed: '+err);
+      showToast('Download failed: ' + err, 'err');
       return;
     }
+    restartSessionTimer();
     // If the browser supports the File System Access API, let the user
     // pick where to save the file via a native "Save As" dialog.
     if (window.showSaveFilePicker) {
@@ -1190,7 +1256,19 @@ async function saveAccess() {
 async function api(method,path,body){
   const opts={method,headers:{Authorization:'Bearer '+token}};
   if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body)}
-  return fetch(path,opts);
+  const r = await fetch(path,opts);
+  // A 401 on any authenticated endpoint means the session has expired or
+  // been invalidated server-side. /api/login and /api/register are exempt
+  // since a 401 there just means "wrong credentials" on the login screen
+  // itself, not an expired session — that's handled inline by the caller.
+  if (r.status === 401 && path !== '/api/login' && path !== '/api/register') {
+    handleSessionExpired();
+  } else if (r.ok && token) {
+    // Any successful authenticated call resets the server's inactivity
+    // clock (see SessionManager.resolve) — keep the visible countdown in sync.
+    restartSessionTimer();
+  }
+  return r;
 }
 function showMsg(el,type,text){
   el.innerHTML=`<div class="alert alert-${type==='err'?'err':'ok'}">${text}</div>`;

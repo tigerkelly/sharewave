@@ -278,6 +278,7 @@ Settings are saved to `~/.sharewave.conf` and can be edited from the GUI's
 | Upload Dir | `~/sharewave-uploads` | Root directory for uploaded files |
 | Database | `~/sharewave.db` | SQLite database file |
 | Keystore | `~/sharewave.keystore` | PKCS12 TLS keystore |
+| Session Timeout | `5` minutes | How long a web UI session stays signed in with no activity |
 
 > **Note:** Config changes made via the GUI take effect on the **next server
 > restart**. The server must be restarted via systemd or by stopping and
@@ -482,6 +483,14 @@ self-signed certificate warning — click **Advanced → Proceed**. Register an
 account or sign in. The admin can also create accounts from the GUI's
 **👤 Users** tab.
 
+Once signed in, a countdown in the header ("Session: 4:42") shows time
+remaining before you're logged out due to inactivity — any action that
+talks to the server (refreshing, uploading, downloading, etc.) resets it
+back to the full timeout, matching the server's own session timeout
+(default **5 minutes**, configurable — see "Server configuration" below).
+It turns red in the final minute, and you're returned to the login screen
+automatically when it reaches zero.
+
 ### Upload a file
 1. Drag one or more files onto the drop zone, or click **Browse Files** to
    select multiple files at once. Selected files appear in a queue showing
@@ -524,8 +533,9 @@ disk are silently skipped rather than failing the whole download.
 ### ⚙ Server
 Connection settings (host + mgmt port), a **Disk Usage** panel showing
 filesystem space used/free and ShareWave's own storage footprint, and server
-configuration (web port, upload dir, database, keystore). Click
-**Save Config** to persist changes; restart the server for them to take effect.
+configuration (web port, upload dir, database, keystore, session timeout).
+Click **Save Config** to persist changes; restart the server for them to
+take effect.
 
 ### 📁 Files
 All uploaded files across every user, including owner, size, access, expiry,

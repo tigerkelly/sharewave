@@ -85,7 +85,8 @@ public class ServerMain {
         db.open();
 
         // Session manager
-        SessionManager sessions = new SessionManager();
+        SessionManager sessions = new SessionManager(config.getSessionTimeoutMinutes());
+        log.accept("Session timeout: " + config.getSessionTimeoutMinutes() + " minute(s)");
 
         // ShareWave web handler
         ShareWaveHandler servlet = new ShareWaveHandler(db, sessions, uploadDir, config, log);

@@ -5,11 +5,26 @@ import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Simple in-memory session store. Sessions expire after TIMEOUT_MS of inactivity.
+ * Simple in-memory session store. Sessions expire after a configurable
+ * period of inactivity (default 5 minutes — see ServerConfig.getSessionTimeoutMinutes).
  */
 public class SessionManager {
 
-    private static final long TIMEOUT_MS = 30L * 60 * 1000; // 30 minutes
+    private final long timeoutMs;
+
+    /** Uses the default timeout (5 minutes). */
+    public SessionManager() {
+        this(5);
+    }
+
+    /** @param timeoutMinutes inactivity timeout, in minutes; must be positive */
+    public SessionManager(int timeoutMinutes) {
+        if (timeoutMinutes <= 0) timeoutMinutes = 5;
+        this.timeoutMs = timeoutMinutes * 60L * 1000;
+    }
+
+    /** Inactivity timeout, in seconds — exposed so clients can show an accurate countdown. */
+    public long timeoutSeconds() { return timeoutMs / 1000; }
 
     private record Session(int userId, long lastAccess) {}
 
@@ -33,7 +48,7 @@ public class SessionManager {
         if (token == null || token.isBlank()) return -1;
         Session s = sessions.get(token);
         if (s == null) return -1;
-        if (System.currentTimeMillis() - s.lastAccess() > TIMEOUT_MS) {
+        if (System.currentTimeMillis() - s.lastAccess() > timeoutMs) {
             sessions.remove(token);
             return -1;
         }
@@ -49,7 +64,7 @@ public class SessionManager {
     /** Returns current active session count. */
     public int activeCount() {
         long now = System.currentTimeMillis();
-        sessions.entrySet().removeIf(e -> now - e.getValue().lastAccess() > TIMEOUT_MS);
+        sessions.entrySet().removeIf(e -> now - e.getValue().lastAccess() > timeoutMs);
         return sessions.size();
     }
 }

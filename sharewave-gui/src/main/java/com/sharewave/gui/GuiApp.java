@@ -69,8 +69,9 @@ public class GuiApp extends Application {
     private Button     connectBtn, themeBtn;
 
     // Server config fields
-    private TextField webPortField, uploadDirField, dbPathField, keystoreField, srvMgmtPortField, siteTitleField;
+    private TextField webPortField, uploadDirField, dbPathField, keystoreField, srvMgmtPortField, siteTitleField, sessionTimeoutField;
     private Label titleHelp;
+    private Label sessionTimeoutUnit;
     private Label saveConfigStatus;
     private Label firstRunNote;
     private ProgressBar diskUsageBar;
@@ -312,6 +313,13 @@ public class GuiApp extends Application {
         srvMgmtPortField = styledTF("", 70);
         mgmtPortRow.getChildren().addAll(fieldLabel("Mgmt Port", 90), srvMgmtPortField);
 
+        HBox sessionTimeoutRow = new HBox(8); sessionTimeoutRow.setAlignment(Pos.CENTER_LEFT);
+        sessionTimeoutField = styledTF("", 50);
+        sessionTimeoutField.setPromptText("5");
+        sessionTimeoutUnit = new Label("minutes (web UI inactivity timeout)");
+        sessionTimeoutUnit.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
+        sessionTimeoutRow.getChildren().addAll(fieldLabel("Session Timeout", 90), sessionTimeoutField, sessionTimeoutUnit);
+
         Button saveConfigBtn = new Button("Save Config");
         applyToggleStyle(saveConfigBtn, false);
         saveConfigBtn.setStyle(saveConfigBtn.getStyle()
@@ -329,7 +337,7 @@ public class GuiApp extends Application {
             new Separator(),
             diskTitle, diskBox,
             new Separator(),
-            cfgTitle, titleRow, webPortRow, uploadRow, dbRow, ksRow, mgmtPortRow, saveRow
+            cfgTitle, titleRow, webPortRow, uploadRow, dbRow, ksRow, mgmtPortRow, sessionTimeoutRow, saveRow
         );
         return card;
     }
@@ -1125,7 +1133,8 @@ public class GuiApp extends Application {
                     "uploadDir",   uploadDirField.getText().trim(),
                     "dbPath",      dbPathField.getText().trim(),
                     "keystore",    keystoreField.getText().trim(),
-                    "siteTitle",   siteTitleField.getText().trim()
+                    "siteTitle",   siteTitleField.getText().trim(),
+                    "sessionTimeoutMinutes", sessionTimeoutField.getText().trim()
                 );
                 appendLog("Server config saved. Site title/version take effect immediately; " +
                         "restart server for other changes to take effect.");
@@ -1155,6 +1164,7 @@ public class GuiApp extends Application {
         keystoreField.setText(cfg.has("keystore") ? cfg.get("keystore").getAsString()  : "");
         srvMgmtPortField.setText(cfg.has("mgmtPort")? cfg.get("mgmtPort").getAsString(): "");
         siteTitleField.setText(cfg.has("siteTitle")? cfg.get("siteTitle").getAsString(): "");
+        sessionTimeoutField.setText(cfg.has("sessionTimeoutMinutes")? cfg.get("sessionTimeoutMinutes").getAsString(): "5");
     }
 
     private void changeAdminPassword() {
@@ -1238,6 +1248,7 @@ public class GuiApp extends Application {
         // Re-apply text field styles so they update on theme switch
         applyTextFieldStyles();
         if (titleHelp != null) titleHelp.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:10px;");
+        if (sessionTimeoutUnit != null) sessionTimeoutUnit.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;");
         if (statusSep != null) statusSep.setStyle("-fx-text-fill:" + theme.border() + ";-fx-font-size:16px;");
 
         // Re-style the first-run help note
@@ -1336,6 +1347,7 @@ public class GuiApp extends Application {
         if (keystoreField    != null) keystoreField.setStyle(tf);
         if (srvMgmtPortField != null) srvMgmtPortField.setStyle(tf);
         if (siteTitleField   != null) siteTitleField.setStyle(tf);
+        if (sessionTimeoutField != null) sessionTimeoutField.setStyle(tf);
     }
 
     private void applyLogAreaStyle() {

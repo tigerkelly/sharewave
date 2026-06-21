@@ -25,6 +25,7 @@ public class ServerConfig {
             System.getProperty("user.home") + File.separator + "sharewave.keystore";
     private static final String DEF_THEME       = "dark";
     private static final String DEF_SITE_TITLE  = "ShareWave";
+    private static final String DEF_SESSION_TIMEOUT_MIN = "5";
 
     public void load() {
         if (Files.exists(CONFIG_FILE)) {
@@ -52,6 +53,17 @@ public class ServerConfig {
     public String getTheme()     { return props.getProperty("theme",       DEF_THEME);      }
     public String getSiteTitle()  { return props.getProperty("site_title",   DEF_SITE_TITLE);   }
 
+    /** Session inactivity timeout, in minutes. Always a positive integer (falls back to the default if stored value is invalid). */
+    public int getSessionTimeoutMinutes() {
+        String raw = props.getProperty("session_timeout_min", DEF_SESSION_TIMEOUT_MIN);
+        try {
+            int v = Integer.parseInt(raw.trim());
+            return v > 0 ? v : Integer.parseInt(DEF_SESSION_TIMEOUT_MIN);
+        } catch (NumberFormatException e) {
+            return Integer.parseInt(DEF_SESSION_TIMEOUT_MIN);
+        }
+    }
+
     public void setWebPort(String v)   { props.setProperty("port",       v); }
     public void setMgmtPort(String v)  { props.setProperty("mgmt_port",  v); }
     public void setUploadDir(String v) { props.setProperty("upload_dir", v); }
@@ -59,4 +71,15 @@ public class ServerConfig {
     public void setKeystore(String v)  { props.setProperty("keystore",   v); }
     public void setTheme(String v)     { props.setProperty("theme",      v); }
     public void setSiteTitle(String v)  { props.setProperty("site_title",   (v == null || v.isBlank()) ? DEF_SITE_TITLE   : v.trim()); }
+
+    /** Sets the session timeout in minutes. Ignores non-positive or unparsable values, keeping whatever was set before. */
+    public void setSessionTimeoutMinutes(String v) {
+        if (v == null || v.isBlank()) return;
+        try {
+            int parsed = Integer.parseInt(v.trim());
+            if (parsed > 0) props.setProperty("session_timeout_min", String.valueOf(parsed));
+        } catch (NumberFormatException ignored) {
+            // leave existing value unchanged
+        }
+    }
 }

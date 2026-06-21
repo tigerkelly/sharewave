@@ -213,7 +213,8 @@ public class ShareWaveHandler extends HttpServlet {
             if (uid < 0) { sendJson(resp, 409, Map.of("error", "Username already taken")); return; }
             String token = sessions.createSession(uid);
             logger.accept("REGISTER " + username);
-            sendJson(resp, 200, Map.of("token", token, "username", username.toLowerCase()));
+            sendJson(resp, 200, Map.of("token", token, "username", username.toLowerCase(),
+                    "expiresInSeconds", sessions.timeoutSeconds()));
         } catch (Exception e) {
             sendJson(resp, 500, Map.of("error", e.getMessage()));
         }
@@ -229,7 +230,8 @@ public class ShareWaveHandler extends HttpServlet {
             if (uid < 0) { sendJson(resp, 401, Map.of("error", "Invalid credentials")); return; }
             String token = sessions.createSession(uid);
             logger.accept("LOGIN  " + username);
-            sendJson(resp, 200, Map.of("token", token, "username", username.toLowerCase()));
+            sendJson(resp, 200, Map.of("token", token, "username", username.toLowerCase(),
+                    "expiresInSeconds", sessions.timeoutSeconds()));
         } catch (Exception e) {
             sendJson(resp, 500, Map.of("error", e.getMessage()));
         }
