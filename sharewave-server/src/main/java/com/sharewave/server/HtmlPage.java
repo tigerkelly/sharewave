@@ -724,6 +724,7 @@ function addFiles(fileList){
     pendingFiles.push({file:f, status:'pending'});
   }
   renderQueue();
+  restartSessionTimer();
 }
 
 function removeQueuedFile(index){
