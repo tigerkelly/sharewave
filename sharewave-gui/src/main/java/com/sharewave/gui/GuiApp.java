@@ -61,6 +61,7 @@ public class GuiApp extends Application {
     // Tab content roots
     private VBox  serverCard, filesCard, usersCard, archiveCard, logCard;
     private VBox  filesListBox, usersListBox, archiveListBox;
+    private HBox  fileHeaders;
     private TextArea logArea;
     private ComboBox<String> logFileCombo;  // placeholder — server streams live
 
@@ -356,10 +357,10 @@ public class GuiApp extends Application {
         refresh.setOnAction(e -> refreshFiles());
         toolbar.getChildren().addAll(lbl, sp, refresh);
 
-        HBox headers = new HBox(0); headers.setPadding(new Insets(4, 8, 4, 8));
-        headers.setStyle("-fx-background-color:" + theme.panel() + ";-fx-border-color:" + theme.border() +
+        fileHeaders = new HBox(0); fileHeaders.setPadding(new Insets(4, 8, 4, 8));
+        fileHeaders.setStyle("-fx-background-color:" + theme.panel() + ";-fx-border-color:" + theme.border() +
                 ";-fx-border-radius:5 5 0 0;-fx-background-radius:5 5 0 0;");
-        headers.getChildren().addAll(
+        fileHeaders.getChildren().addAll(
             colHdr("Filename",220), colHdr("Owner",75), colHdr("Size",60),
             colHdr("Access",60), colHdr("Expires",70), colHdr("Uploaded",135),
             colHdr("Last DL",135), colHdr("",62)
@@ -374,7 +375,7 @@ public class GuiApp extends Application {
         ph.setStyle("-fx-text-fill:" + theme.muted() + ";-fx-font-size:11px;-fx-padding:12 8;");
         filesListBox.getChildren().add(ph);
 
-        card.getChildren().addAll(toolbar, headers, scroll);
+        card.getChildren().addAll(toolbar, fileHeaders, scroll);
         return card;
     }
 
@@ -1280,6 +1281,26 @@ public class GuiApp extends Application {
             themeBtn.setStyle(tbBase);
             themeBtn.setOnMouseEntered(e -> themeBtn.setStyle(tbBase.replace(theme.muted(),theme.text())));
             themeBtn.setOnMouseExited(e  -> themeBtn.setStyle(tbBase));
+        }
+
+        // Row backgrounds in the file/user/archive lists are set at build
+        // time (theme.panel() / theme.bg()), so they must be rebuilt after a
+        // theme switch. Only do this when connected — the refresh methods are
+        // no-ops when not connected, but this avoids unnecessary overhead.
+        if (fileHeaders != null) {
+            fileHeaders.setStyle("-fx-background-color:" + theme.panel() +
+                    ";-fx-border-color:" + theme.border() +
+                    ";-fx-border-radius:5 5 0 0;-fx-background-radius:5 5 0 0;");
+            fileHeaders.getChildren().forEach(n -> {
+                if (n instanceof Label l)
+                    l.setStyle("-fx-text-fill:" + theme.muted() +
+                            ";-fx-font-size:10px;-fx-font-weight:bold;");
+            });
+        }
+        if (client != null && client.isConnected()) {
+            refreshFiles();
+            refreshUsers();
+            refreshArchive();
         }
     }
 

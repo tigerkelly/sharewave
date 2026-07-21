@@ -69,6 +69,49 @@ if [ -f "$SCRIPT_DIR/VERSION" ]; then
     ok "  $INSTALL_DIR/VERSION ($(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION"))"
 fi
 
+# ── Step 1b: Create ~/.sharewave/ and migrate legacy config files ──────────────
+# All ShareWave data (config, db, keystore, uploads) now lives under
+# ~/.sharewave/ instead of being scattered across ~/. Migrate any files
+# from their old locations on existing installs.
+if [ -n "${SUDO_USER:-}" ]; then
+    SHAREWAVE_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)/.sharewave"
+    DATA_OWNER="$SUDO_USER"
+else
+    SHAREWAVE_HOME="$HOME/.sharewave"
+    DATA_OWNER="$(whoami)"
+fi
+
+mkdir -p "$SHAREWAVE_HOME"
+chown "$DATA_OWNER" "$SHAREWAVE_HOME"
+
+# Migrate old scattered files to the new unified directory.
+OLD_HOME="$(dirname "$SHAREWAVE_HOME")"
+declare -A MIGRATIONS=(
+    ["$OLD_HOME/.sharewave.conf"]="$SHAREWAVE_HOME/sharewave.conf"
+    ["$OLD_HOME/.sharewave-gui.conf"]="$SHAREWAVE_HOME/gui.conf"
+    ["$OLD_HOME/.sharewave-admin.conf"]="$SHAREWAVE_HOME/admin.conf"
+    ["$OLD_HOME/sharewave.db"]="$SHAREWAVE_HOME/sharewave.db"
+    ["$OLD_HOME/sharewave.keystore"]="$SHAREWAVE_HOME/sharewave.keystore"
+)
+MIGRATED=0
+for OLD in "${!MIGRATIONS[@]}"; do
+    NEW="${MIGRATIONS[$OLD]}"
+    if [ -f "$OLD" ] && [ ! -f "$NEW" ]; then
+        mv "$OLD" "$NEW"
+        chown "$DATA_OWNER" "$NEW"
+        ok "  Migrated $(basename "$OLD") → ~/.sharewave/$(basename "$NEW")"
+        MIGRATED=1
+    fi
+done
+# Migrate old uploads directory
+if [ -d "$OLD_HOME/sharewave-uploads" ] && [ ! -d "$SHAREWAVE_HOME/uploads" ]; then
+    mv "$OLD_HOME/sharewave-uploads" "$SHAREWAVE_HOME/uploads"
+    chown -R "$DATA_OWNER" "$SHAREWAVE_HOME/uploads"
+    ok "  Migrated sharewave-uploads/ → ~/.sharewave/uploads/"
+    MIGRATED=1
+fi
+[ "$MIGRATED" -eq 0 ] && ok "  ~/.sharewave/ ready (no legacy files to migrate)"
+
 # ── Step 2: Bundle JavaFX native libraries for the GUI ────────────────────────
 info "Step 2/5 — Bundling JavaFX native libraries"
 

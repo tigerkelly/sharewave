@@ -197,8 +197,22 @@ The GUI can run on **any machine** that can reach the server's management
 port (default **9443**) over TCP — it doesn't need to be on the same
 machine as the server.
 
-Copy the repo (or just `sharewave-gui/`, `build.sh`, `install.sh`,
-`sharewave-server.service`) to that machine, then:
+### Option A — Native installer (recommended, no Java required)
+
+Build a self-contained native installer on the target platform (the
+installer bundles its own JRE + JavaFX):
+
+```bash
+# On the machine where you want to run the GUI
+./package-gui.sh        # auto-detects platform: .deb / .dmg / .msi
+```
+
+See INSTALL.md → "Building a native installer" for full details and
+per-platform instructions.
+
+### Option B — Build from source (requires JDK + Maven)
+
+Copy the repo to that machine, then:
 
 ```bash
 ./build.sh gui
@@ -230,7 +244,7 @@ chmod +x run-gui.sh
 
 1. A **Set Admin Password** dialog appears on very first run.  
    Choose a password (min 4 characters). Stored as a bcrypt hash in
-   `~/.sharewave-admin.conf`.
+   `~/.sharewave/admin.conf`.
 
 2. The main window opens. In the **⚙ Server** tab enter:
 
@@ -243,14 +257,14 @@ chmod +x run-gui.sh
 
 4. Once connected, the status bar turns green and all tabs become active.
 
-The last-used host and port are saved to `~/.sharewave-gui.conf` and
+The last-used host and port are saved to `~/.sharewave/gui.conf` and
 restored automatically next time.
 
 ---
 
 ## First launch — server (console / systemd)
 
-On first start the server checks for `~/.sharewave-admin.conf`.  
+On first start the server checks for `~/.sharewave/admin.conf`.  
 If it does not exist it prompts for a new password on **stdout**:
 
 ```
@@ -259,7 +273,7 @@ If it does not exist it prompts for a new password on **stdout**:
 ```
 
 Type a password and press Enter. The hash is written to
-`~/.sharewave-admin.conf` and the server continues starting up.
+`~/.sharewave/admin.conf` and the server continues starting up.
 
 When running as a systemd service (no terminal), set the password **before**
 enabling the service by running the JAR manually once (see Option B above).
@@ -268,14 +282,14 @@ enabling the service by running the JAR manually once (see Option B above).
 
 ## Server configuration
 
-Settings are saved to `~/.sharewave.conf` and can be edited from the GUI's
+Settings are saved to `~/.sharewave/sharewave.conf` and can be edited from the GUI's
 **⚙ Server** tab while connected.
 
 | Setting | Default | Description |
 |---|---|---|
 | Web Port | `8443` | HTTPS port for browser users |
 | Mgmt Port | `9443` | TCP port the GUI connects to |
-| Upload Dir | `~/sharewave-uploads` | Root directory for uploaded files |
+| Upload Dir | `~/.sharewave/uploads` | Root directory for uploaded files |
 | Database | `~/sharewave.db` | SQLite database file |
 | Keystore | `~/sharewave.keystore` | PKCS12 TLS keystore |
 | Session Timeout | `5` minutes | How long a web UI session stays signed in with no activity |
@@ -289,9 +303,9 @@ Settings are saved to `~/.sharewave.conf` and can be edited from the GUI's
 The upload directory and all of its subdirectories are created
 **automatically** — there's nothing you need to create by hand for the
 default setup to work. The first time the server starts, it creates the
-upload root (default `~/sharewave-uploads`); the first time each user
+upload root (default `~/.sharewave/uploads`); the first time each user
 uploads a file, it creates that user's own subdirectory underneath it
-(`~/sharewave-uploads/<username>/`).
+(`~/.sharewave/uploads/<username>/`).
 
 **Using the default location:** nothing to do — just start the server.
 
@@ -299,7 +313,7 @@ uploads a file, it creates that user's own subdirectory underneath it
 at `/mnt/storage`):
 
 1. Set **Upload Dir** in the GUI's **⚙ Server** tab (or edit `upload_dir`
-   directly in `~/.sharewave.conf`) to the path you want, e.g.
+   directly in `~/.sharewave/sharewave.conf`) to the path you want, e.g.
    `/mnt/storage/sharewave-uploads`.
 2. Make sure the directory's *parent* exists and is writable by whichever
    user runs the server:
@@ -564,7 +578,7 @@ connection. **Clear** clears the display only.
 
 **On the server machine:**
 ```bash
-rm ~/.sharewave-admin.conf
+rm ~/.sharewave/admin.conf
 # Then restart the server — it will prompt for a new password
 sudo systemctl restart sharewave-server
 # Watch the journal for the password prompt:
@@ -630,13 +644,13 @@ Log files are written to `uploads/logs/sharewave.log`.
 ## Directory layout (defaults)
 
 ```
-~/
-├── sharewave.db              SQLite database
+~/.sharewave/
+├── sharewave.conf             Server configuration
+├── gui.conf                   GUI connection settings (host, port, theme)
+├── admin.conf                 Admin password hash (bcrypt)
+├── sharewave.db               SQLite database
 ├── sharewave.keystore         TLS keystore (PKCS12)
-├── .sharewave.conf            Server configuration
-├── .sharewave-admin.conf      Admin password hash (bcrypt)
-├── .sharewave-gui.conf        GUI connection settings (host, port, theme)
-└── sharewave-uploads/
+└── uploads/
     ├── <username>/            Per-user upload directory (one per account)
     │   └── <uuid>_filename    That user's uploaded files
     ├── _tmp/                  Jetty multipart spool (same FS as uploads)
@@ -648,7 +662,16 @@ Log files are written to `uploads/logs/sharewave.log`.
         └── <uuid>_filename    Expired files (from any user)
 ```
 
-Each registered user gets their own subdirectory under `sharewave-uploads/`,
+All ShareWave data is consolidated under `~/.sharewave/` — nothing is
+scattered across the home directory. The directory and all files inside
+it are created automatically; you don't need to create it by hand.
+
+> **Upgrading from an older install?** `sudo ./install.sh` automatically
+> migrates any files from their old locations (`~/sharewave.db`,
+> `~/.sharewave/sharewave.conf`, etc.) into `~/.sharewave/` the first time it
+> runs. Nothing is deleted — only moved.
+
+Each registered user gets their own subdirectory under `uploads/`,
 created automatically on their first upload. The directory name is the
 username with any characters outside `a-zA-Z0-9._-` replaced with `_`.
 
@@ -680,11 +703,12 @@ sharewave/
 ├── install.sh                       Installs both to /opt/sharewave, sets up systemd + "sharewave" command
 ├── run-gui.sh                       Wrapper to launch the GUI directly from ~/.m2 (no install needed)
 ├── sharewave-server.service         systemd unit file
+├── package-gui.sh                   Build a native installer for the admin GUI (jpackage)
 │
 ├── sharewave-server/
 │   └── src/.../server/
 │       ├── ServerMain.java          Headless entry point
-│       ├── ServerConfig.java        Config persistence (~/.sharewave.conf)
+│       ├── ServerConfig.java        Config persistence (~/.sharewave/sharewave.conf)
 │       ├── AppConfig.java           Shared app-level constants/config
 │       ├── AdminConfig.java         Admin password (bcrypt)
 │       ├── ManagementServer.java    TCP server on mgmt port
@@ -699,13 +723,18 @@ sharewave/
 │       └── FileLogger.java          Rotating file logger (1 MB / 2 backups)
 │
 └── sharewave-gui/
-    └── src/.../gui/
-        ├── GuiApp.java              JavaFX application
-        ├── Launcher.java            Bootstrap launcher (resolves JavaFX native libs)
-        ├── ManagementClient.java    TCP client + live log streaming
-        ├── GuiConfig.java           GUI settings (~/.sharewave-gui.conf)
-        ├── AdminConfig.java         Admin password (bcrypt, GUI copy)
-        └── AppVersion.java          Reads the project-root/installed VERSION file
+    ├── src/.../gui/
+    │   ├── GuiApp.java              JavaFX application
+    │   ├── Launcher.java            Bootstrap launcher (resolves JavaFX native libs)
+    │   ├── ManagementClient.java    TCP client + live log streaming
+    │   ├── GuiConfig.java           GUI settings (~/.sharewave/gui.conf)
+    │   ├── AdminConfig.java         Admin password (bcrypt, GUI copy)
+    │   └── AppVersion.java          Reads the project-root/installed VERSION file
+    └── src/main/installer/
+        └── icons/
+            ├── sharewave.png        Base icon (Linux / fallback)
+            ├── sharewave.icns       macOS icon (generate from PNG — see icons/README.md)
+            └── sharewave.ico        Windows icon (generate from PNG — see icons/README.md)
 ```
 
 ---

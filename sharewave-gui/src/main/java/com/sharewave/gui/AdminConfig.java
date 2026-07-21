@@ -10,16 +10,21 @@ import java.util.Properties;
  * Stores the JavaFX admin password (bcrypt-hashed) separately from
  * the server config so it never appears in plain text on disk.
  *
- * File: ~/.sharewave-admin.conf
+ * File: ~/.sharewave/admin.conf
  */
 public class AdminConfig {
 
     private static final Path CONFIG_FILE =
-            Path.of(System.getProperty("user.home"), ".sharewave-admin.conf");
+            Path.of(System.getProperty("user.home"), ".sharewave", "admin.conf");
 
     private final Properties props = new Properties();
 
     public void load() {
+        try {
+            Files.createDirectories(CONFIG_FILE.getParent());
+        } catch (IOException e) {
+            System.err.println("Cannot create ShareWave directory: " + e.getMessage());
+        }
         if (Files.exists(CONFIG_FILE)) {
             try (Reader r = Files.newBufferedReader(CONFIG_FILE)) {
                 props.load(r);
@@ -30,8 +35,11 @@ public class AdminConfig {
     }
 
     public void save() {
-        try (Writer w = Files.newBufferedWriter(CONFIG_FILE)) {
-            props.store(w, "ShareWave admin credentials — do not share");
+        try {
+            Files.createDirectories(CONFIG_FILE.getParent());
+            try (Writer w = Files.newBufferedWriter(CONFIG_FILE)) {
+                props.store(w, "ShareWave admin credentials — do not share");
+            }
         } catch (IOException e) {
             System.err.println("AdminConfig save error: " + e.getMessage());
         }

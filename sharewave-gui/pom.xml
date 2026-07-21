@@ -23,6 +23,7 @@
 
     <build>
         <plugins>
+            <!-- JavaFX Maven plugin (used by run-gui.sh / mvn javafx:run) -->
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
@@ -31,12 +32,19 @@
                     <mainClass>com.sharewave.gui.GuiApp</mainClass>
                 </configuration>
             </plugin>
+
+            <!--
+              Fat/shaded JAR — used by install.sh (run-gui.sh, installed GUI).
+              The shade plugin merges everything into one self-contained JAR so
+              the installed launcher doesn't need a class-path.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.5.1</version>
                 <executions>
                     <execution>
+                        <id>shade</id>
                         <phase>package</phase>
                         <goals><goal>shade</goal></goals>
                         <configuration>
@@ -71,4 +79,120 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+      ══════════════════════════════════════════════════════════════════════════
+      Native installer profile
+      Activated with: mvn package -Pinstaller  (or ./package-gui.sh)
+
+      Uses jpackage (JDK 14+) to build a self-contained native installer that
+      bundles a private JRE + JavaFX — no Java installation required on the
+      admin's machine.
+
+      Must be run on the TARGET platform:
+        • Linux   → produces a .deb and/or .rpm
+        • macOS   → produces a .dmg and a .pkg
+        • Windows → produces a .msi and/or .exe  (requires WiX Toolset)
+
+      jpackage needs the app classes and dependencies as SEPARATE jars
+      (not a fat JAR), so this profile:
+        1. Copies all dependency jars to target/deps/
+        2. Copies the plain (unshaded) app jar to target/app/
+        3. Invokes jpackage via exec-maven-plugin
+      ══════════════════════════════════════════════════════════════════════════
+    -->
+    <profiles>
+        <profile>
+            <id>installer</id>
+            <build>
+                <plugins>
+                    <!-- Step 1: Copy dependency JARs to target/deps/ -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <version>3.6.1</version>
+                        <executions>
+                            <execution>
+                                <id>copy-deps</id>
+                                <phase>prepare-package</phase>
+                                <goals><goal>copy-dependencies</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/deps</outputDirectory>
+                                    <includeScope>runtime</includeScope>
+                                    <!-- Exclude JavaFX — jpackage bundles the
+                                         platform-specific natives itself via
+                                         the module path we pass it -->
+                                    <excludeGroupIds>org.openjfx</excludeGroupIds>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!--
+                      Step 2+3: Run jpackage after the package phase.
+                      exec:exec lets us call jpackage as an external process
+                      (it's not a Maven plugin; it's a JDK tool).
+                    -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.2.0</version>
+                        <executions>
+                            <execution>
+                                <id>jpackage</id>
+                                <phase>verify</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>jpackage</executable>
+                                    <arguments>
+                                        <!-- App identity -->
+                                        <argument>--name</argument>
+                                        <argument>ShareWave</argument>
+                                        <argument>--app-version</argument>
+                                        <argument>${sharewave.version}</argument>
+                                        <argument>--description</argument>
+                                        <argument>ShareWave Admin GUI — manage your ShareWave server</argument>
+                                        <argument>--vendor</argument>
+                                        <argument>Kelly Wiles</argument>
+
+                                        <!-- Input: app JAR (unshaded) + dependency JARs -->
+                                        <argument>--input</argument>
+                                        <argument>${project.build.directory}/deps</argument>
+                                        <argument>--main-jar</argument>
+                                        <argument>sharewave-gui-${project.version}.jar</argument>
+                                        <argument>--main-class</argument>
+                                        <argument>com.sharewave.gui.Launcher</argument>
+
+                                        <!-- Add the unshaded app JAR to the input dir.
+                                             We copy it inline via a workaround below;
+                                             the actual copy is done by package-gui.sh -->
+
+                                        <!-- JavaFX module path (platform natives from ~/.m2) -->
+                                        <argument>--module-path</argument>
+                                        <argument>${sharewave.javafx.path}</argument>
+                                        <argument>--add-modules</argument>
+                                        <argument>javafx.controls,javafx.fxml</argument>
+
+                                        <!-- JVM args passed to the bundled runtime -->
+                                        <argument>--java-options</argument>
+                                        <argument>--add-opens=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>--add-opens=java.base/java.lang=ALL-UNNAMED</argument>
+
+                                        <!-- Output directory -->
+                                        <argument>--dest</argument>
+                                        <argument>${project.build.directory}/installer</argument>
+
+                                        <!-- Platform icon (set by package-gui.sh via -D) -->
+                                        <argument>--icon</argument>
+                                        <argument>${sharewave.icon}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

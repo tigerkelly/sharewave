@@ -6,16 +6,21 @@ import java.util.Properties;
 
 /**
  * Persists GUI-only settings: last server host, management port, theme.
- * Stored in ~/.sharewave-gui.conf — separate from the server config.
+ * Stored in ~/.sharewave/gui.conf — alongside all other ShareWave data.
  */
 public class GuiConfig {
 
     private static final Path CONFIG_FILE =
-            Path.of(System.getProperty("user.home"), ".sharewave-gui.conf");
+            Path.of(System.getProperty("user.home"), ".sharewave", "gui.conf");
 
     private final Properties props = new Properties();
 
     public void load() {
+        try {
+            Files.createDirectories(CONFIG_FILE.getParent());
+        } catch (IOException e) {
+            System.err.println("Cannot create ShareWave directory: " + e.getMessage());
+        }
         if (Files.exists(CONFIG_FILE)) {
             try (Reader r = Files.newBufferedReader(CONFIG_FILE)) {
                 props.load(r);
@@ -26,8 +31,11 @@ public class GuiConfig {
     }
 
     public void save() {
-        try (Writer w = Files.newBufferedWriter(CONFIG_FILE)) {
-            props.store(w, "ShareWave GUI configuration");
+        try {
+            Files.createDirectories(CONFIG_FILE.getParent());
+            try (Writer w = Files.newBufferedWriter(CONFIG_FILE)) {
+                props.store(w, "ShareWave GUI configuration");
+            }
         } catch (IOException e) {
             System.err.println("GuiConfig save error: " + e.getMessage());
         }

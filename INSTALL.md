@@ -117,3 +117,71 @@ the repo there and run steps 1, 3 (`./build.sh gui`), and 4. See
 
 See README.md for configuration options, the uploads directory setup,
 firewall details, password reset, and troubleshooting.
+
+
+---
+
+## Building a native installer for the admin GUI
+
+`package-gui.sh` uses `jpackage` (bundled with JDK 14+) to produce a
+self-contained native installer — the resulting package bundles a private JRE
+and JavaFX so **no Java installation is required** on the admin's machine.
+
+**Must be run on the target platform** — build on Windows to get a `.msi`,
+on macOS to get a `.dmg`, on Linux to get a `.deb` or `.rpm`.
+
+### Prerequisites
+
+- JDK 17+ (**not** just a JRE — `jpackage` is part of the JDK)
+- Maven 3.8+
+- Platform packaging tools:
+  - **Linux/deb**: `dpkg` (already present on Debian/Ubuntu/Pi OS)
+  - **Linux/rpm**: `rpm-build` — `sudo apt install rpm` or `sudo dnf install rpm-build`
+  - **Windows**: [WiX Toolset 3.x](https://wixtoolset.org/) — install it and make sure `candle.exe`/`light.exe` are on your `PATH`
+  - **macOS**: Xcode Command Line Tools — `xcode-select --install`
+- Run `./build.sh gui` at least once so Maven has downloaded JavaFX into `~/.m2`
+
+### Build the installer
+
+```bash
+./package-gui.sh
+```
+
+That's it. The script auto-detects your platform and produces the right
+package type. You can force a specific type with `--type`:
+
+```bash
+./package-gui.sh --type deb   # Linux .deb
+./package-gui.sh --type rpm   # Linux .rpm
+./package-gui.sh --type dmg   # macOS .dmg
+./package-gui.sh --type msi   # Windows .msi (requires WiX)
+```
+
+Output: `sharewave-gui/target/installer/ShareWave-<version>.<ext>`
+
+### Install on this machine
+
+```bash
+# Linux .deb
+sudo dpkg -i sharewave-gui/target/installer/ShareWave-*.deb
+
+# Linux .rpm
+sudo rpm -i sharewave-gui/target/installer/ShareWave-*.rpm
+
+# macOS — open the .dmg and drag ShareWave to Applications
+
+# Windows — double-click the .msi to run the setup wizard
+```
+
+### Install on another machine
+
+Copy the installer file to the target machine and install it there. The
+recipient needs no Java — the JRE is bundled inside the installer.
+
+### App icon
+
+The default icon is a simple placeholder at
+`sharewave-gui/src/main/installer/icons/sharewave.png`. Replace it with
+your own 512×512 PNG and re-run `./package-gui.sh`. See the `README.md`
+in that directory for how to generate `.icns` (macOS) and `.ico` (Windows)
+variants from a PNG.

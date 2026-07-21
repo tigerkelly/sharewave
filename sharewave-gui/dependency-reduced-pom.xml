@@ -22,6 +22,7 @@
         <version>3.5.1</version>
         <executions>
           <execution>
+            <id>shade</id>
             <phase>package</phase>
             <goals>
               <goal>shade</goal>
@@ -58,4 +59,76 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>installer</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <version>3.6.1</version>
+            <executions>
+              <execution>
+                <id>copy-deps</id>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>copy-dependencies</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.directory}/deps</outputDirectory>
+                  <includeScope>runtime</includeScope>
+                  <excludeGroupIds>org.openjfx</excludeGroupIds>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.2.0</version>
+            <executions>
+              <execution>
+                <id>jpackage</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>jpackage</executable>
+                  <arguments>
+                    <argument>--name</argument>
+                    <argument>ShareWave</argument>
+                    <argument>--app-version</argument>
+                    <argument>${sharewave.version}</argument>
+                    <argument>--description</argument>
+                    <argument>ShareWave Admin GUI — manage your ShareWave server</argument>
+                    <argument>--vendor</argument>
+                    <argument>Kelly Wiles</argument>
+                    <argument>--input</argument>
+                    <argument>${project.build.directory}/deps</argument>
+                    <argument>--main-jar</argument>
+                    <argument>sharewave-gui-${project.version}.jar</argument>
+                    <argument>--main-class</argument>
+                    <argument>com.sharewave.gui.Launcher</argument>
+                    <argument>--module-path</argument>
+                    <argument>${sharewave.javafx.path}</argument>
+                    <argument>--add-modules</argument>
+                    <argument>javafx.controls,javafx.fxml</argument>
+                    <argument>--java-options</argument>
+                    <argument>--add-opens=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED</argument>
+                    <argument>--java-options</argument>
+                    <argument>--add-opens=java.base/java.lang=ALL-UNNAMED</argument>
+                    <argument>--dest</argument>
+                    <argument>${project.build.directory}/installer</argument>
+                    <argument>--icon</argument>
+                    <argument>${sharewave.icon}</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -39,14 +39,23 @@ public class ServerMain {
         AdminConfig adminConfig = new AdminConfig();
         adminConfig.load();
 
-        // If no admin password set, prompt on console (first run headless)
+        // If no admin password set, accept it from the environment variable
+        // (Docker/CI) or prompt on the console (interactive first run).
         if (adminConfig.isFirstRun()) {
-            System.out.println("[ShareWave] No admin password set.");
-            System.out.print("[ShareWave] Enter new admin password: ");
-            String pw = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(System.in)).readLine();
+            String envPw = System.getenv("SHAREWAVE_ADMIN_PASSWORD");
+            String pw;
+            if (envPw != null && !envPw.isBlank()) {
+                pw = envPw.trim();
+                System.out.println("[ShareWave] Admin password set from SHAREWAVE_ADMIN_PASSWORD.");
+            } else {
+                System.out.println("[ShareWave] No admin password set.");
+                System.out.print("[ShareWave] Enter new admin password: ");
+                pw = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(System.in)).readLine();
+            }
             if (pw == null || pw.length() < 4) {
-                System.err.println("Password must be at least 4 characters.");
+                System.err.println("Password must be at least 4 characters. " +
+                        "Set SHAREWAVE_ADMIN_PASSWORD env var or run interactively.");
                 System.exit(1);
             }
             adminConfig.setPassword(pw);
