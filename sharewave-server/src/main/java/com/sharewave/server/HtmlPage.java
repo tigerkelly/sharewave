@@ -663,6 +663,7 @@ async function doRegister() {
 async function doLogout() {
   await api('POST','/api/logout');
   token=''; username='';
+  document.getElementById('loginPass').value = '';
   // Nothing to clear from localStorage — credentials were memory-only.
   showAuth();
 }
