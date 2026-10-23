@@ -122,13 +122,7 @@ input[type=text],input[type=password],select{
   padding:.5rem .75rem;color:var(--text);font-size:.9rem;width:100%;transition:border-color .2s}
 input:focus,select:focus{outline:none;border-color:var(--accent)}
 
-/* ── Tabs ── */
-.tabs{display:flex;margin-bottom:1.25rem}
-.tab-btn{flex:1;padding:.5rem;background:transparent;border:1px solid var(--border);
-         color:var(--muted);cursor:pointer;font-size:.875rem;transition:all .15s}
-.tab-btn:first-child{border-radius:6px 0 0 6px}
-.tab-btn:last-child{border-radius:0 6px 6px 0}
-.tab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
 
 /* ── Buttons ── */
 .btn{padding:.5rem 1.2rem;border:none;border-radius:6px;cursor:pointer;
@@ -303,28 +297,24 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 <div id="authView">
   <div id="authWrap">
     <div class="card">
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('login')">Sign In</button>
-        <button class="tab-btn"        onclick="switchTab('register')">Register</button>
-      </div>
+      <h3 style="margin:0 0 1rem;font-size:1rem;color:var(--text)">Sign In</h3>
       <div id="loginForm">
         <div class="field"><label>Username</label>
           <input type="text" id="loginUser" placeholder="username" autocomplete="username"></div>
         <div class="field"><label>Password</label>
           <input type="password" id="loginPass" placeholder="••••••••"
                  onkeydown="if(event.key==='Enter')doLogin()"></div>
-        <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Sign In</button>
+        <button class="btn btn-primary" style="width:100%" id="loginBtn" onclick="doLogin()">Sign In</button>
         <div id="loginMsg"></div>
+        <div id="lockoutBar" class="hidden" style="margin-top:.75rem;padding:.6rem .8rem;
+             border-radius:8px;background:var(--bg);border:1px solid var(--border);
+             font-size:.82rem;color:var(--muted);text-align:center">
+          🔒 Too many failed attempts — try again in
+          <strong id="lockoutTimer" style="color:var(--danger);font-variant-numeric:tabular-nums"></strong>
+        </div>
       </div>
-      <div id="registerForm" class="hidden">
-        <div class="field"><label>Username</label>
-          <input type="text" id="regUser" placeholder="choose a username" autocomplete="username"></div>
-        <div class="field"><label>Password</label>
-          <input type="password" id="regPass" placeholder="min 4 characters"
-                 onkeydown="if(event.key==='Enter')doRegister()"></div>
-        <button class="btn btn-primary" style="width:100%" onclick="doRegister()">Create Account</button>
-        <div id="regMsg"></div>
-      </div>
+      <p style="margin:.9rem 0 0;font-size:.78rem;color:var(--muted);text-align:center">
+        Accounts are created by the admin.</p>
     </div>
   </div>
 </div>
@@ -389,9 +379,17 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 
   <!-- File list card -->
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
       <h2 style="margin-bottom:0">Files Available to You</h2>
       <button class="btn btn-ghost" onclick="loadFiles()">↻ Refresh</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem">
+      <input id="fileSearch" type="search" placeholder="Filter by filename, owner or access…"
+             oninput="renderFiles()"
+             style="flex:1;padding:.45rem .7rem;border-radius:8px;border:1px solid var(--border);
+                    background:var(--bg);color:var(--text);font-size:.85rem;outline:none">
+      <button class="btn btn-ghost" style="font-size:.78rem;white-space:nowrap"
+              onclick="document.getElementById('fileSearch').value='';renderFiles()">✕ Clear</button>
     </div>
     <div id="bulkDownloadBar" class="hidden" style="display:flex;align-items:center;gap:.6rem;
          margin-bottom:.85rem;padding:.5rem .75rem;background:var(--bg);border:1px solid var(--border);
@@ -530,7 +528,9 @@ let username = '';
 let darkMode = localStorage.getItem('sw_theme') !== 'light';
 let pendingFiles = [];  // array of {file, status} objects
 let selectedFileIds = new Set();  // ids checked for bulk download
+let allFiles = [];                // cached full file list from last loadFiles()
 let sessionTimeoutSeconds = 30 * 60;  // overwritten from server on login/register
+let lockoutInterval = null;
 let sessionExpiresAt = 0;             // Date.now()-style ms timestamp
 let sessionTimerInterval = null;
 
@@ -583,7 +583,6 @@ function showAuth() {
 function handleSessionExpired() {
   token = ''; username = '';
   showAuth();
-  switchTab('login');
   document.getElementById('loginPass').value = '';
   showMsg(document.getElementById('loginMsg'), 'err', 'Your session has expired — please log in again.');
 }
@@ -634,12 +633,38 @@ function showApp() {
   startSessionTimer();
   loadUsers(); loadFiles();
 }
-function switchTab(t) {
-  document.querySelectorAll('.tab-btn').forEach((b,i)=>
-    b.classList.toggle('active',(t==='login'&&i===0)||(t==='register'&&i===1)));
-  document.getElementById('loginForm').classList.toggle('hidden', t!=='login');
-  document.getElementById('registerForm').classList.toggle('hidden', t!=='register');
+// ── Login lockout countdown ───────────────────────────────────────────
+function startLockoutCountdown(seconds) {
+  let remaining = seconds;
+  const bar  = document.getElementById('lockoutBar');
+  const timer= document.getElementById('lockoutTimer');
+  const btn  = document.getElementById('loginBtn');
+
+  // Show the bar, disable the button so the user can't hammer retry
+  bar.classList.remove('hidden');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  btn.style.cursor  = 'not-allowed';
+
+  function tick() {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    timer.textContent = m + ':' + String(s).padStart(2, '0');
+    if (remaining <= 0) {
+      clearInterval(lockoutInterval);
+      lockoutInterval = null;
+      bar.classList.add('hidden');
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor  = '';
+    }
+    remaining--;
+  }
+  tick(); // render immediately, then once per second
+  clearInterval(lockoutInterval);
+  lockoutInterval = setInterval(tick, 1000);
 }
+
 async function doLogin() {
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value;
@@ -647,19 +672,29 @@ async function doLogin() {
   if(!u||!p){showMsg(msg,'err','Fill in all fields');return}
   const r=await api('POST','/api/login',{username:u,password:p});
   const d=await r.json();
-  if(!r.ok){showMsg(msg,'err',d.error||'Login failed');return}
+  if(!r.ok){
+    document.getElementById('loginPass').value='';
+    if (r.status===429 && d.secondsRemaining) {
+      // Lockout — show the countdown bar, suppress the inline message
+      msg.innerHTML='';
+      startLockoutCountdown(d.secondsRemaining);
+    } else if (r.status===401 && d.attemptsRemaining != null) {
+      const n = d.attemptsRemaining;
+      const warn = n <= 1 ? 'color:var(--danger);font-weight:600' : 'color:var(--muted)';
+      msg.innerHTML=`<div class="alert alert-err">${d.error||'Login failed'}</div>`+
+        `<div style="font-size:.78rem;text-align:center;margin-top:.35rem;${warn}">`+
+        `${n} attempt${n===1?'':'s'} remaining before lockout</div>`;
+    } else {
+      showMsg(msg,'err',d.error||'Login failed');
+    }
+    return;
+  }
+  // Clear any lingering lockout bar on successful login
+  clearInterval(lockoutInterval); lockoutInterval=null;
+  document.getElementById('lockoutBar').classList.add('hidden');
   persist(d.token,d.username,d.expiresInSeconds); showApp();
 }
-async function doRegister() {
-  const u=document.getElementById('regUser').value.trim();
-  const p=document.getElementById('regPass').value;
-  const msg=document.getElementById('regMsg');
-  if(!u||!p){showMsg(msg,'err','Fill in all fields');return}
-  const r=await api('POST','/api/register',{username:u,password:p});
-  const d=await r.json();
-  if(!r.ok){showMsg(msg,'err',d.error||'Registration failed');return}
-  persist(d.token,d.username,d.expiresInSeconds); showApp();
-}
+
 async function doLogout() {
   await api('POST','/api/logout');
   token=''; username='';
@@ -918,14 +953,36 @@ function uploadOneFile(file, isPublic, allowedUsers, expiresTs, message, index, 
 async function loadFiles() {
   const r=await api('GET','/api/files');
   const d=await r.json();
+  allFiles=d.files||[];
+  // Drop selected ids no longer in the list (deleted/expired since last load)
+  const currentIds=new Set(allFiles.map(f=>f.id));
+  for (const id of Array.from(selectedFileIds)) if (!currentIds.has(id)) selectedFileIds.delete(id);
+  renderFiles();
+}
+
+function renderFiles() {
   const wrap=document.getElementById('fileListWrap');
-  const files=d.files||[];
-  if(!files.length){
+  const q=(document.getElementById('fileSearch')?.value||'').trim().toLowerCase();
+
+  // Apply filter — match against filename, owner, and access label
+  const files=q ? allFiles.filter(f=>{
+    return f.filename.toLowerCase().includes(q)
+        || f.owner.toLowerCase().includes(q)
+        || (f.isPublic ? 'public' : 'private').includes(q);
+  }) : allFiles;
+
+  if(!allFiles.length){
     wrap.innerHTML='<div class="empty"><div class="icon">📭</div>No files available yet.</div>';
     selectedFileIds.clear();
     updateBulkDownloadBar();
     return;
   }
+  if(!files.length){
+    wrap.innerHTML=`<div class="empty"><div class="icon">🔍</div>No files match <strong>${esc(q)}</strong>.</div>`;
+    updateBulkDownloadBar();
+    return;
+  }
+
   let html=`<table class="file-table"><thead><tr>
     <th style="width:28px"><input type="checkbox" id="selectAllFiles" onchange="toggleSelectAllFiles(this)"></th>
     <th>Filename</th><th>Size</th><th>Owner</th><th>Access</th><th>Expires</th><th>Uploaded</th><th>Last Download</th><th></th>
@@ -951,12 +1008,10 @@ async function loadFiles() {
       </div></td>
     </tr>`;
   });
-  html+='</tbody></table>';
+  html+=`</tbody></table>`;
+  if(q) html+=`<div style="padding:.4rem .5rem;font-size:.78rem;color:var(--muted)">
+    Showing ${files.length} of ${allFiles.length} file${allFiles.length===1?'':'s'}</div>`;
   wrap.innerHTML=html;
-  // Drop any selected ids that no longer exist in the current file list
-  // (e.g. deleted/expired since last load), then refresh the toolbar.
-  const currentIds=new Set(files.map(f=>f.id));
-  for (const id of Array.from(selectedFileIds)) if (!currentIds.has(id)) selectedFileIds.delete(id);
   updateBulkDownloadBar();
 }
 

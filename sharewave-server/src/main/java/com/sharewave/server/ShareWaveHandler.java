@@ -36,6 +36,7 @@ public class ShareWaveHandler extends HttpServlet {
 
     private final Database         db;
     private final SessionManager   sessions;
+    private final LoginRateLimiter rateLimiter = new LoginRateLimiter();
     private final Path             uploadDir;
     private final Path             tempDir;
     private final ServerConfig     config;
@@ -222,12 +223,47 @@ public class ShareWaveHandler extends HttpServlet {
 
     private void handleLogin(HttpServletRequest req, HttpServletResponse resp)
             throws IOException {
+        String ip = req.getRemoteAddr();
+
+        // Rate-limit check — block IPs that have exceeded the failure threshold
+        if (rateLimiter.isBlocked(ip)) {
+            long secs = rateLimiter.secondsRemaining(ip);
+            long mins  = secs / 60;
+            String wait = mins > 0 ? mins + " minute" + (mins == 1 ? "" : "s")
+                                   : secs + " second" + (secs == 1 ? "" : "s");
+            logger.accept("LOGIN  BLOCKED " + ip + " (" + wait + " remaining)");
+            sendJson(resp, 429, Map.of("error",
+                    "Too many failed attempts — try again in " + wait + ".",
+                    "secondsRemaining", secs));
+            return;
+        }
+
         var body = parseJsonBody(req);
         String username = body.getOrDefault("username", "").toString().trim();
         String password = body.getOrDefault("password", "").toString();
         try {
             int uid = db.login(username, password);
-            if (uid < 0) { sendJson(resp, 401, Map.of("error", "Invalid credentials")); return; }
+            if (uid < 0) {
+                rateLimiter.recordFailure(ip);
+                long secs  = rateLimiter.secondsRemaining(ip);
+                if (secs > 0) {
+                    logger.accept("LOGIN  FAILED+LOCKED " + username + " from " + ip);
+                    long mins = secs / 60;
+                    String wait = mins > 0 ? mins + " minute" + (mins == 1 ? "" : "s")
+                                           : secs + " second" + (secs == 1 ? "" : "s");
+                    sendJson(resp, 429, Map.of("error",
+                            "Too many failed attempts — try again in " + wait + ".",
+                            "secondsRemaining", secs));
+                } else {
+                    int remaining = LoginRateLimiter.maxFailures() - rateLimiter.getFailures(ip);
+                    logger.accept("LOGIN  FAILED " + username + " from " + ip
+                            + " (" + remaining + " attempt" + (remaining == 1 ? "" : "s") + " left)");
+                    sendJson(resp, 401, Map.of("error", "Invalid credentials",
+                            "attemptsRemaining", remaining));
+                }
+                return;
+            }
+            rateLimiter.recordSuccess(ip);
             String token = sessions.createSession(uid);
             logger.accept("LOGIN  " + username);
             sendJson(resp, 200, Map.of("token", token, "username", username.toLowerCase(),

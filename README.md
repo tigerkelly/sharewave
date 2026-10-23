@@ -47,6 +47,9 @@ Web users access ShareWave through any browser at the server's HTTPS address.
 | **Expiry** | 1 / 3 / 7 / 14 / 30 / 90 / 365 days or never; auto-archived on expiry |
 | **Per-user storage** | Each account's uploads live in their own subdirectory under `uploads/` |
 | **Download tracking** | Last-download timestamp shown per file (web UI and GUI) |
+| **Login rate limiting** | Locks out an IP for 5 minutes after 5 consecutive failed login attempts; live countdown shown on the login screen |
+| **Admin-only accounts** | No self-registration; accounts are created exclusively by the admin via the GUI |
+| **File search/filter** | Live filter on the file list by filename, owner, or access type |
 | **Bulk download** | Select multiple files in the web UI and download them as one `.zip` or `.tar.gz` |
 | **Uploader notes** | Optional note attached to each file, visible to downloaders; editable later (web UI and GUI) |
 | **Archive** | Expired files moved to `uploads/archive/`, managed by admin |
@@ -290,8 +293,8 @@ Settings are saved to `~/.sharewave/sharewave.conf` and can be edited from the G
 | Web Port | `8443` | HTTPS port for browser users |
 | Mgmt Port | `9443` | TCP port the GUI connects to |
 | Upload Dir | `~/.sharewave/uploads` | Root directory for uploaded files |
-| Database | `~/sharewave.db` | SQLite database file |
-| Keystore | `~/sharewave.keystore` | PKCS12 TLS keystore |
+| Database | `~/.sharewave/sharewave.db` | SQLite database file |
+| Keystore | `~/.sharewave/sharewave.keystore` | PKCS12 TLS keystore |
 | Session Timeout | `5` minutes | How long a web UI session stays signed in with no activity |
 
 > **Note:** Config changes made via the GUI take effect on the **next server
@@ -491,11 +494,16 @@ do this).
 
 ## Web UI walkthrough
 
-### Register / Login
+### Sign In
 Open `https://your-server-ip:8443/` in a browser. The first visit shows a
-self-signed certificate warning — click **Advanced → Proceed**. Register an
-account or sign in. The admin can also create accounts from the GUI's
-**👤 Users** tab.
+self-signed certificate warning — click **Advanced → Proceed**. Sign in
+with your credentials. Accounts are created by the admin from the GUI's
+**👤 Users** tab — there is no self-registration on the web UI.
+
+After a failed login the form shows how many attempts remain before lockout.
+After 5 consecutive failures the Sign In button is disabled and a live
+countdown appears (e.g. "🔒 Too many failed attempts — try again in **4:59**");
+the button re-enables automatically when the 5-minute lockout expires.
 
 Once signed in, a countdown in the header ("Session: 4:42") shows time
 remaining before you're logged out due to inactivity — any action that
@@ -598,7 +606,7 @@ the current password).
 ## Self-signed certificate
 
 On first start the server runs `keytool` (bundled with every JDK) to generate
-a 2048-bit RSA PKCS12 keystore valid for 10 years at `~/sharewave.keystore`.
+a 2048-bit RSA PKCS12 keystore valid for 10 years at `~/.sharewave/sharewave.keystore`.
 
 Browsers show **"Your connection is not private"** on the first visit.
 Click **Advanced → Proceed**. After that the browser remembers the exception.
@@ -610,11 +618,11 @@ To use a real certificate (e.g. from Let's Encrypt via Certbot):
 openssl pkcs12 -export \
   -in /etc/letsencrypt/live/yourdomain/fullchain.pem \
   -inkey /etc/letsencrypt/live/yourdomain/privkey.pem \
-  -out ~/sharewave.keystore \
+  -out ~/.sharewave/sharewave.keystore \
   -name sharewave \
   -passout pass:sharewave
 
-# Point the Keystore field at ~/sharewave.keystore (already the default)
+# Point the Keystore field at ~/.sharewave/sharewave.keystore (already the default)
 ```
 
 The keystore password must be `sharewave` (defined in `CertUtil.KEYSTORE_PASSWORD`).
@@ -717,6 +725,7 @@ sharewave/
 │       ├── ShareWaveHandler.java    Jetty HttpServlet (web API)
 │       ├── HtmlPage.java            Inline web UI (HTML/CSS/JS)
 │       ├── SessionManager.java      In-memory session tokens
+│       ├── LoginRateLimiter.java      Brute-force protection (5 failures → 5-min lockout per IP)
 │       ├── CertUtil.java            TLS keystore generation
 │       ├── AppVersion.java          Reads the project-root/installed VERSION file
 │       ├── TarWriter.java           Minimal dependency-free ustar tar writer (for bundle downloads)
@@ -784,7 +793,7 @@ All endpoints except `/api/register` and `/api/login` require
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/register` | — | Create account → `{token, username}` |
+| `POST` | `/api/register` | — | Create account (used internally by the admin GUI; not available on the web UI) |
 | `POST` | `/api/login` | — | Login → `{token, username}` |
 | `POST` | `/api/logout` | ✓ | Invalidate session |
 | `GET` | `/api/users` | ✓ | List other usernames |
