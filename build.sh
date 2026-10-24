@@ -62,13 +62,13 @@ TARGET="${1:-all}"
 
 build_server() {
     info "Building sharewave-server..."
-    mvn -q package -DskipTests -pl sharewave-server -am
+    mvn -q package -DskipTests -pl sharewave-server -am 2> >(grep -v "^WARNING" >&2)
     ok "sharewave-server.jar → sharewave-server/target/sharewave-server.jar"
 }
 
 build_gui() {
     info "Building sharewave-gui..."
-    mvn -q package -DskipTests -pl sharewave-gui -am
+    mvn -q package -DskipTests -pl sharewave-gui -am 2> >(grep -v "^WARNING" >&2)
     ok "sharewave-gui.jar → sharewave-gui/target/sharewave-gui.jar"
 }
 
